@@ -12,6 +12,8 @@ InputParameters validParams<CoupledBEEquilibriumSub>()
   params.addParam<Real>("weight",1.0,"The weight of the equilibrium species");
   params.addParam<Real>("log_k",0.0,"The equilibrium constaant of this equilibrium species in dissociateion reaction");
 
+ params.addParam<std::string>("lg_kw","Equilibrium constant calculated from material kernel, if log_k is not provided");
+
   params.addParam<Real>("sto_u",1.0,"The stochiomentic coef of the primary variable this kernel operats on");
   params.addRequiredParam<std::vector<Real> >("sto_v","The stochiometric coefficients of coupled primary species");
 
@@ -25,7 +27,12 @@ CoupledBEEquilibriumSub::CoupledBEEquilibriumSub(const std::string & name, Input
   // You must call the constructor of the base class first
   :Kernel(name,parameters),
    _weight(getParam<Real>("weight")),
-   _log_k(getParam<Real>("log_k")),
+   _log10_k(getParam<Real>("log_k")),
+
+   _has_lg_kw(isParamValid("lg_kw")),
+   _prop_name2(_has_lg_kw? getParam<std::string>("lg_kw"): NULL),//IF lg_kw is not provided ,use some else material property as its fake name which wouldn't be used in calculation.
+   _lg_kw(getMaterialProperty<Real>(_prop_name2)),
+
    _sto_u(getParam<Real>("sto_u")),
    _sto_v(getParam<std::vector<Real> >("sto_v")),
    _porosity(getMaterialProperty<Real>("porosity")),
@@ -47,6 +54,14 @@ CoupledBEEquilibriumSub::CoupledBEEquilibriumSub(const std::string & name, Input
 
 Real CoupledBEEquilibriumSub::computeQpResidual()
 {
+  double _log_k = 0.0;
+    //If lg_kw name corresponding to material kernel is provided, use lg_kw
+  if (_has_lg_kw)
+    _log_k = _lg_kw[_qp];
+  else
+    _log_k = _log10_k;
+
+
   Real _val_new = std::pow(10.0,_log_k)*std::pow(_u[_qp],_sto_u);
   Real _val_old = std::pow(10.0,_log_k)*std::pow(_u_old[_qp],_sto_u);
 
@@ -69,6 +84,14 @@ Real CoupledBEEquilibriumSub::computeQpResidual()
 
 Real CoupledBEEquilibriumSub::computeQpJacobian()
 {
+  double _log_k = 0.0;
+    //If lg_kw name corresponding to material kernel is provided, use lg_kw
+  if (_has_lg_kw)
+    _log_k = _lg_kw[_qp];
+  else
+    _log_k = _log10_k;
+
+
   Real _val_new = std::pow(10.0,_log_k)*_sto_u*std::pow(_u[_qp],_sto_u-1.0)*_phi[_j][_qp];
 
   if (_v_vals.size())
@@ -84,6 +107,14 @@ Real CoupledBEEquilibriumSub::computeQpJacobian()
 
 Real CoupledBEEquilibriumSub::computeQpOffDiagJacobian(unsigned int jvar)
 {
+  double _log_k = 0.0;
+    //If lg_kw name corresponding to material kernel is provided, use lg_kw
+  if (_has_lg_kw)
+    _log_k = _lg_kw[_qp];
+  else
+    _log_k = _log10_k;
+
+
   Real _val_new = std::pow(10.0,_log_k)*std::pow(_u[_qp],_sto_u);
 
   if (_vars.size())
@@ -92,7 +123,7 @@ Real CoupledBEEquilibriumSub::computeQpOffDiagJacobian(unsigned int jvar)
     for (unsigned int i=0; i<_vars.size(); ++i)
     {
 
-      if (jvar == _vars[i])
+      if(jvar == _vars[i])
       {
         _val_new *= _sto_v[i]*std::pow((*_v_vals[i])[_qp],_sto_v[i]-1.0)*_phi[_j][_qp];
       }
@@ -111,3 +142,4 @@ Real CoupledBEEquilibriumSub::computeQpOffDiagJacobian(unsigned int jvar)
     return 0.0;
 
 }
+

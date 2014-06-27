@@ -60,12 +60,18 @@ private:
    * constructor!
    */
   /// Material property of dispersion-diffusion coefficient.
+  bool _has_diff;
+  std::string _prop_name;
   MaterialProperty<Real> & _diffusivity;
+
+  bool _has_lg_kw;
+  std::string _prop_name2;
+  MaterialProperty<Real> & _lg_kw;
 
   /// Weight of the equilibrium species concentration in the total primary species concentration.
   Real _weight;
   /// Equilibrium constant for the equilibrium species in association form.
-  Real _log_k;
+  Real _log10_k;
   /// Stochiometric coefficient of the primary species.
   Real _sto_u;
   /// Stochiometric coefficiets of the coupled primary species.
@@ -76,5 +82,7 @@ private:
   std::vector<VariableValue *> _vals;
   /// Coupled gradients of primary species concentrations.
   std::vector<VariableGradient *> _grad_vals;
+
+//  Real _log_k;
 };
 #endif //COUPLEDDIFFUSIONREACTIONSUB_H

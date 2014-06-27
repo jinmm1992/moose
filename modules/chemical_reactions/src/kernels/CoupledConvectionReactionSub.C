@@ -10,6 +10,8 @@ InputParameters validParams<CoupledConvectionReactionSub>()
   params.addParam<Real>("weight",1.0,"Weight of the equilibrium species");
   params.addParam<Real>("log_k",0.0,"Equilibrium constant of dissociation equilibrium reaction");
 
+ params.addParam<std::string>("lg_kw","Equilibrium constant calculated from material kernel, if log_k is not provided");
+
   params.addParam<Real>("sto_u",1.0,"Stochiometric coef of the primary spceices the kernel operates on in the equilibrium reaction");
   params.addRequiredParam<std::vector<Real> >("sto_v","The stochiometric coefficients of coupled primary species in equilibrium reaction");
   params.addRequiredCoupledVar("p", "Pressure");
@@ -26,7 +28,12 @@ CoupledConvectionReactionSub::CoupledConvectionReactionSub(const std::string & n
     // variable in the computation.  We are going to use the gradient of p
     // to calculate our velocity vector.
    _weight(getParam<Real>("weight")),
-   _log_k (getParam<Real>("log_k")),
+   _log10_k (getParam<Real>("log_k")),
+
+   _has_lg_kw(isParamValid("lg_kw")),
+   _prop_name2(_has_lg_kw? getParam<std::string>("lg_kw"): NULL),//IF lg_kw is not provided ,use some else material property as its fake name which wouldn't be used in calculation.
+   _lg_kw(getMaterialProperty<Real>(_prop_name2)),
+
    _sto_u(getParam<Real>("sto_u")),
    _sto_v(getParam<std::vector<Real> >("sto_v")),
    _cond(getMaterialProperty<Real>("conductivity")),
@@ -48,6 +55,14 @@ CoupledConvectionReactionSub::CoupledConvectionReactionSub(const std::string & n
 
 Real CoupledConvectionReactionSub::computeQpResidual()
 {
+  double _log_k = 0.0;
+    //If lg_kw name corresponding to material kernel is provided, use lg_kw
+  if (_has_lg_kw)
+    _log_k = _lg_kw[_qp];
+  else
+    _log_k = _log10_k;
+
+
   RealGradient darcy_vel=-_grad_p[_qp]*_cond[_qp];
 
   RealGradient d_u = _sto_u*std::pow(_u[_qp],_sto_u-1.0)*_grad_u[_qp];
@@ -81,6 +96,14 @@ Real CoupledConvectionReactionSub::computeQpResidual()
 
 Real CoupledConvectionReactionSub::computeQpJacobian()
 {
+  double _log_k = 0.0;
+    //If lg_kw name corresponding to material kernel is provided, use lg_kw
+  if (_has_lg_kw)
+    _log_k = _lg_kw[_qp];
+  else
+    _log_k = _log10_k;
+
+
 // the partial derivative of _grad_u is just _dphi[_j]
 
   RealGradient darcy_vel=-_grad_p[_qp]*_cond[_qp];
@@ -122,6 +145,14 @@ Real CoupledConvectionReactionSub::computeQpJacobian()
 
 Real CoupledConvectionReactionSub::computeQpOffDiagJacobian(unsigned int jvar)
 {
+  double _log_k = 0.0;
+    //If lg_kw name corresponding to material kernel is provided, use lg_kw
+  if (_has_lg_kw)
+    _log_k = _lg_kw[_qp];
+  else
+    _log_k = _log10_k;
+
+
   if (_vals.size())
   {
     RealGradient darcy_vel=-_grad_p[_qp]*_cond[_qp];
@@ -130,7 +161,7 @@ Real CoupledConvectionReactionSub::computeQpOffDiagJacobian(unsigned int jvar)
 
     for (unsigned int i=0; i<_vals.size(); ++i)
     {
-      if (jvar == _vars[i])
+      if(jvar == _vars[i])
       {
         diff1 *= _sto_v[i]*std::pow((*_vals[i])[_qp],_sto_v[i]-1.0)*_phi[_j][_qp];
       }
@@ -148,7 +179,7 @@ Real CoupledConvectionReactionSub::computeQpOffDiagJacobian(unsigned int jvar)
 
     for (unsigned int i=0; i<_vals.size(); ++i)
     {
-      if (jvar == _vars[i])
+      if(jvar == _vars[i])
       {
         diff2_1 = _sto_v[i]*(_sto_v[i]-1.0)*std::pow((*_vals[i])[_qp],_sto_v[i]-2.0)*_phi[_j][_qp]*(*_grad_vals[i])[_qp];
         diff2_2 = _sto_v[i]*std::pow((*_vals[i])[_qp],_sto_v[i]-1.0)*_grad_phi[_j][_qp];
@@ -159,7 +190,7 @@ Real CoupledConvectionReactionSub::computeQpOffDiagJacobian(unsigned int jvar)
 
     for (unsigned int i=0; i<_vals.size(); ++i)
     {
-      if (jvar != _vars[i])
+      if(jvar != _vars[i])
       {
         diff2 *= std::pow((*_vals[i])[_qp],_sto_v[i]);
       }
@@ -175,7 +206,7 @@ Real CoupledConvectionReactionSub::computeQpOffDiagJacobian(unsigned int jvar)
 
     for (unsigned int i=0; i<_vals.size(); ++i)
     {
-      if (jvar == _vars[i])
+      if(jvar == _vars[i])
       {
         var = i;
         val_jvar = val_u*_sto_v[i]*std::pow((*_vals[i])[_qp],_sto_v[i]-1.0)*_phi[_j][_qp];
@@ -184,7 +215,7 @@ Real CoupledConvectionReactionSub::computeQpOffDiagJacobian(unsigned int jvar)
 
     for (unsigned int i=0; i<_vals.size(); ++i)
     {
-      if (i != var)
+      if(i != var)
       {
         diff3 = val_jvar*_sto_v[i]*std::pow((*_vals[i])[_qp],_sto_v[i]-1.0)*(*_grad_vals[i])[_qp];
 

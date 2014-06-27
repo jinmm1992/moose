@@ -6,6 +6,9 @@ InputParameters validParams<KineticDisPreConcAux>()
   InputParameters params = validParams<AuxKernel>();
 
   params.addParam<Real>("log_k",0.0,"The equilibrium constant of the dissolution reaction");
+
+ params.addCoupledVar("lg_kw",0.0,"Equilibrium constant calculated from auxkernel, if log_k is not provided");
+
   params.addRequiredParam<std::vector<Real> >("sto_v","The stochiometric coefficients of reactant species");
   params.addParam<Real>("r_area",0.1,"Specific reactive surface area in m^2/L solution");
   params.addParam<Real>("ref_kconst",6.456542e-8,"Kinetic rate constant in mol/m^2 s");
@@ -21,7 +24,8 @@ InputParameters validParams<KineticDisPreConcAux>()
 
 KineticDisPreConcAux::KineticDisPreConcAux(const std::string & name, InputParameters parameters)
   :AuxKernel(name, parameters),
-   _log_k(getParam<Real>("log_k")),
+   _log10_k(getParam<Real>("log_k")),
+   _EC(coupledValue("lg_kw")),
    _r_area(getParam<Real>("r_area")),
    _ref_kconst(getParam<Real>("ref_kconst")),
    _e_act(getParam<Real>("e_act")),
@@ -40,6 +44,8 @@ KineticDisPreConcAux::KineticDisPreConcAux(const std::string & name, InputParame
 Real
 KineticDisPreConcAux::computeValue()
 {
+  double _log_k = (isCoupled("lg_kw") ? _EC[_qp] : _log10_k);
+
   Real kconst = _ref_kconst*exp(-_e_act*(1/_ref_temp-1/_sys_temp)/_gas_const);
   Real omega = 1.0;
 

@@ -38,7 +38,10 @@ protected:
   virtual Real computeValue();
 
   /// Equilibrium constant at reference temperature
-  Real _log_k;
+  Real _log10_k;
+  
+  VariableValue & _EC;
+  
   /// Specific reactive surface area, m^2/L solution
   Real _r_area;
   /// Reference kinetic rate constant

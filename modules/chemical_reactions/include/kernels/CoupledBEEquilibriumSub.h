@@ -61,8 +61,13 @@ private:
   /// Weight of the equilibrium species concentration in the total primary species concentration.
   Real _weight;
   /// Equilibrium constant for the equilibrium species in association form.
-  Real _log_k;
+  Real _log10_k;
   /// Stochiometric coefficient of the primary species.
+
+  bool _has_lg_kw;
+  std::string _prop_name2;
+  MaterialProperty<Real> & _lg_kw;
+
   Real _sto_u;
   /// Stochiometric coefficiets of the coupled primary species.
   std::vector<Real> _sto_v;
