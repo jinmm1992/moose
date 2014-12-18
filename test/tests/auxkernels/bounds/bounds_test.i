@@ -56,7 +56,7 @@
     type = DirichletBC
     variable = u
     boundary = 1
-    value = 1
+    value = 10
   [../]
 
   [./left_v]
@@ -70,7 +70,7 @@
     type = DirichletBC
     variable = v
     boundary = 1
-    value = 1
+    value = 5
   [../]
 []
 
@@ -96,7 +96,9 @@
   type = Steady
 
   # Preconditioned JFNK (default)
-  solve_type = 'PJFNK'
+  solve_type = 'NEWTON'
+  petsc_options_iname = '-snes_type'
+  petsc_options_value = 'vinewtonssls'
 []
 
 [Outputs]

@@ -1,0 +1,6 @@
+#!/bin/bash
+b=10.0
+a=$(bc -l <<< "$b")
+echo $a
+
+~/Projects/moose/test/moose_test-opt -i piecewise_constant_2.i Functions/bc_func/value=150*y-$a*y+$a

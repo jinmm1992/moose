@@ -74,7 +74,7 @@
   [./sub]
     type = TransientMultiApp
     app_type = MooseTestApp
-    positions = '0 0 0'
+    positions = '-0.5 0 0'
     input_files = fromsub_fixed_meshes_sub.i
   [../]
 []
@@ -86,7 +86,7 @@
     multi_app = sub
     source_variable = u
     variable = from_sub
-    fixed_meshes = true
+    #fixed_meshes = true
   [../]
   [./elemental_from_sub]
     type = MultiAppNearestNodeTransfer
@@ -94,6 +94,6 @@
     multi_app = sub
     source_variable = u
     variable = elemental_from_sub
-    fixed_meshes = true
+    #fixed_meshes = true
   [../]
 []

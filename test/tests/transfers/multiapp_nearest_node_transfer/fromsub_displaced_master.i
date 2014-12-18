@@ -1,8 +1,8 @@
 [Mesh]
   type = GeneratedMesh
   dim = 2
-  nx = 10
-  ny = 10
+  nx = 40
+  ny = 40
   # The Transfer system doesn't work quite right with ParallelMesh enabled.
   # Form more information, see #2126
   distribution = serial
