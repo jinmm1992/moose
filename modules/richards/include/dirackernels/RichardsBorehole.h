@@ -11,6 +11,10 @@
 #include "Function.h"
 #include "RichardsSumQuantity.h"
 #include "RichardsVarNames.h"
+#include "RichardsDensity.h"
+#include "RichardsRelPerm.h"
+#include "RichardsSeff.h"
+
 
 class RichardsBorehole;
 
@@ -37,16 +41,28 @@ public:
 
   /**
    * Add Dirac Points to the borehole
-   * If !_mesh_adaptivity then the containing element for
-   * each point gets cached to speed up computations
-   * at later time steps
    */
   virtual void addPoints();
 
   /**
-   * Computes the residual
+   * Computes the residual.  This just
+   * calls prepareNodalValues, if _fully_upwind
+   * then calls DiracKernel::computeResidual
+   */
+  virtual void computeResidual();
+
+  /**
+   * Computes the Qp residual
    */
   virtual Real computeQpResidual();
+
+
+  /**
+   * Computes the Jacobian.  This just
+   * calls prepareNodalValues, if _fully_upwind
+   * then calls DiracKernel::computeJacobian
+   */
+  virtual void computeJacobian();
 
   /**
    * Computes the diagonal part of the jacobian
@@ -66,11 +82,43 @@ protected:
   /// Checks rotation matrices are correct
   bool _debug_things;
 
+  /// Whether to use full upwinding
+  bool _fully_upwind;
+
   /// Defines the richards variables in the simulation
   const RichardsVarNames & _richards_name_UO;
 
+  /// number of richards variables
+  unsigned int _num_p;
+
   /// The moose internal variable number of the richards variable of this Dirac Kernel
   unsigned int _pvar;
+
+  /// user object defining the density.  Only used if _fully_upwind = true
+  const RichardsDensity * _density_UO;
+
+  /// user object defining the effective saturation.  Only used if _fully_upwind = true
+  const RichardsSeff * _seff_UO;
+
+  /// user object defining the relative permeability.  Only used if _fully_upwind = true
+  const RichardsRelPerm * _relperm_UO;
+
+  /// number of nodes in this element.  Only used if _fully_upwind = true
+  unsigned int _num_nodes;
+
+  /**
+   * nodal values of mobility = density*relperm/viscosity
+   * These are used if _fully_upwind = true
+   */
+  std::vector<Real> _mobility;
+
+  /**
+   * d(_mobility)/d(variable_ph)  (variable_ph is the variable for phase=ph)
+   * These are used in the jacobian calculations if _fully_upwind = true
+   */
+  std::vector<std::vector<Real> > _dmobility_dv;
+
+
 
   /**
    * If positive then the borehole acts as a sink (producion well) for porepressure > borehole pressure, and does nothing otherwise
@@ -91,35 +139,38 @@ protected:
   /// well constant
   Real _well_constant;
 
-  /// whether mesh adaptivity is used (if not then caching of elemental info is used to speed up addPoints)
-  bool _mesh_adaptivity;
+  /// borehole length.  Note this is only used if there is only one borehole point
+  Real _borehole_length;
+
+  /// borehole direction.  Note this is only used if there is only one borehole point
+  RealVectorValue _borehole_direction;
 
   /// fluid porepressure (or porepressures in case of multiphase)
-  MaterialProperty<std::vector<Real> > &_pp;
+  MaterialProperty<std::vector<Real> > & _pp;
 
   /// d(porepressure_i)/d(variable_j)
-  MaterialProperty<std::vector<std::vector<Real> > > &_dpp_dv;
+  MaterialProperty<std::vector<std::vector<Real> > > & _dpp_dv;
 
   /// fluid viscosity
-  MaterialProperty<std::vector<Real> > &_viscosity;
+  MaterialProperty<std::vector<Real> > & _viscosity;
 
   /// material permeability
   MaterialProperty<RealTensorValue> & _permeability;
 
   /// deriviatves of Seff wrt variables
-  MaterialProperty<std::vector<std::vector<Real> > > &_dseff_dv;
+  MaterialProperty<std::vector<std::vector<Real> > > & _dseff_dv;
 
   /// relative permeability
-  MaterialProperty<std::vector<Real> > &_rel_perm;
+  MaterialProperty<std::vector<Real> > & _rel_perm;
 
   /// d(relperm_i)/d(variable_j)
-  MaterialProperty<std::vector<std::vector<Real> > > &_drel_perm_dv;
+  MaterialProperty<std::vector<std::vector<Real> > > & _drel_perm_dv;
 
   /// fluid density
-  MaterialProperty<std::vector<Real> > &_density;
+  MaterialProperty<std::vector<Real> > & _density;
 
   /// d(density_i)/d(variable_j)
-  MaterialProperty<std::vector<std::vector<Real> > > &_ddensity_dv;
+  MaterialProperty<std::vector<std::vector<Real> > > & _ddensity_dv;
 
   /**
    * This is used to hold the total fluid flowing into the borehole
@@ -156,20 +207,31 @@ protected:
   /// rotation matrix used in well_constant calculation
   std::vector<RealTensorValue> _rot_matrix;
 
-  /// the cache of elements containing the Dirac Points
-  std::vector<const Elem *> _elemental_info;
+  /// whether using the _dseff_val, _relperm_val, etc (otherwise values from RichardsMaterial are used)
+  bool _using_coupled_vars;
 
-  /// whether _elemental_info has been constructed
-  bool _have_constructed_elemental_info;
+  /**
+   * Holds the values of pressures at all the nodes of the element
+   * Only used if _fully_upwind = true
+   * Eg:
+   * _ps_at_nodes[_pvar] is a pointer to this variable's nodal porepressure values
+   * So: (*_ps_at_nodes[_pvar])[i] = _var.nodalSln()[i] = porepressure of pressure-variable _pvar at node i
+   */
+  std::vector<VariableValue *> _ps_at_nodes;
+
 
   /// reads a space-separated line of floats from ifs and puts in myvec
-  bool parseNextLineReals(std::ifstream & ifs, std::vector<Real> &myvec);
+  bool parseNextLineReals(std::ifstream & ifs, std::vector<Real> & myvec);
 
   /**
    * Calculates Peaceman's form of the borehole well constant
    * Z Chen, Y Zhang, Well flow models for various numerical methods, Int J Num Analysis and Modeling, 3 (2008) 375-388
    */
   Real wellConstant(const RealTensorValue & perm, const RealTensorValue & rot, const Real & half_len, const Elem * ele, const Real & rad);
+
+  /// calculates the nodal values of pressure, mobility, and derivatives thereof
+  void prepareNodalValues();
+
 
   /**
    * Calculates Jacobian

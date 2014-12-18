@@ -11,7 +11,7 @@ static unsigned int counter = 0;
 template<>
 InputParameters validParams<NodalAreaAction>()
 {
-  MooseEnum orders("FIRST, SECOND, THIRD, FOURTH", "FIRST");
+  MooseEnum orders("FIRST SECOND THIRD FOURTH", "FIRST");
 
   InputParameters params = validParams<Action>();
   params.addParam<BoundaryName>("slave", "The slave surface");
@@ -36,7 +36,7 @@ NodalAreaAction::act()
   _moose_object_pars.set<std::vector<BoundaryName> >("boundary") = std::vector<BoundaryName>(1,getParam<BoundaryName>("slave"));
   _moose_object_pars.set<VariableName>("variable") = "nodal_area_"+short_name;
 
-  _moose_object_pars.set<MooseEnum>("execute_on") = "timestep_begin";
+  _moose_object_pars.set<MultiMooseEnum>("execute_on") = "timestep_begin";
   _moose_object_pars.set<bool>("use_displaced_mesh") = true;
 
   _problem->addUserObject("NodalArea",

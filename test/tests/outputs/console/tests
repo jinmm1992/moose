@@ -1,4 +1,10 @@
 [Tests]
+  [./no_outputs_block]
+    # Test the a file w/o output outputs
+    type = RunApp
+    input = console_no_outputs_block.i
+    expect_out = 'Framework Information'
+  [../]
   [./postprocessors]
     # Tests if the header line for the postprocessor values table is correct
     type = RunApp
@@ -14,9 +20,10 @@
   [./warning]
     # Test that duel screen output warning is printed
     type = RunApp
-    input = 'console.i'
+    input = 'console_warning.i'
     cli_args = 'Outputs/console=true Outputs/screen/file_base=console_warning_out'
-    expect_out = 'Multiple Console output objects are writing to the screen, this will likely cause duplicate messages printed.'
+    expect_out = 'Multiple \(3\) Console output objects are writing to the screen, this will likely cause duplicate messages printed.'
+    allow_warnings = true
   [../]
   [./file_system_information]
     # Test that file contains regex
@@ -25,6 +32,7 @@
     cli_args = 'Outputs/screen/output_file=true Outputs/screen/file_base=console_file_system_information_out'
     check_files = 'console_file_system_information_out.txt'
     file_expect_out = 'Num\s*DOFs:\s*242'
+    recover = false
   [../]
   [./file_postprocessor]
     # Test that file contains regex
@@ -33,6 +41,7 @@
     cli_args = 'Outputs/screen/output_file=true Outputs/screen/file_base=console_file_postprocessor_out'
     check_files = 'console_file_postprocessor_out.txt'
     file_expect_out = '\| time\s*\| num_aux\s*\| num_vars\s*\|\n'
+    recover = false
   [../]
   [./file_scalar_aux]
     # Test that file contains regex
@@ -41,6 +50,7 @@
     cli_args = 'Outputs/screen/output_file=true Outputs/screen/file_base=console_file_scalar_aux_out'
     check_files = 'console_file_scalar_aux_out.txt'
     file_expect_out = '\| time\s*?\| aux0_0\s*?\|\n'
+    recover = false
   [../]
   [./file_solve_log]
     # Test that file contains regex
@@ -49,6 +59,7 @@
     cli_args = 'Outputs/screen/output_file=true Outputs/screen/solve_log=true Outputs/screen/file_base=console_file_solve_log_out'
     check_files = 'console_file_solve_log_out.txt'
     file_expect_out = 'Moose\sTest\sPerformance:'
+    recover = false
   [../]
   [./file_setup_log]
     # Test that file contains regex
@@ -57,6 +68,7 @@
     cli_args = 'Outputs/screen/output_file=true Outputs/screen/setup_log=true Outputs/screen/file_base=console_file_setup_log_out'
     check_files = 'console_file_setup_log_out.txt'
     file_expect_out = 'Setup\sPerformance:'
+    recover = false
   [../]
   [./norms]
     # Test that the variable norms are being output
@@ -77,5 +89,24 @@
     type = RunApp
     input = 'console_transient.i'
     expect_out = 'Time Step  4, time = -0.600000'
+  [../]
+  [./_console]
+    # Test the used of MooseObject::_console method
+    type = RunApp
+    input = 'moose_console.i'
+    expect_out = 'ConsoleMessageKernel::timestepSetup - time = 0.4; t_step = 4'
+  [../]
+  [./_console_const]
+    # Test the used of MooseObject::_console method from a constant method
+    type = RunApp
+    input = 'moose_console.i'
+    expect_out = 'I am writing from a const method'
+  [../]
+  [./input_output]
+    # Test the use of --show-input
+    type = RunApp
+    input = 'console.i'
+    cli_args = '--show-input'
+    expect_out = '[./screen]'
   [../]
 []

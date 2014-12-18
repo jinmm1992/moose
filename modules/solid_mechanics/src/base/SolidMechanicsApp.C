@@ -26,7 +26,10 @@
 #include "MacroElastic.h"
 #include "Mass.h"
 #include "JIntegral.h"
+#include "CrackFrontData.h"
 #include "CrackFrontDefinition.h"
+#include "InteractionIntegral.h"
+#include "InteractionIntegralAuxFields.h"
 #include "MaterialSymmElasticityTensorAux.h"
 #include "MaterialTensorAux.h"
 #include "MaterialTensorOnLine.h"
@@ -34,7 +37,7 @@
 #include "AccumulateAux.h"
 #include "NewmarkAccelAux.h"
 #include "NewmarkVelAux.h"
-#include "qFunctionJIntegral.h"
+#include "DomainIntegralQFunction.h"
 #include "PLC_LSH.h"
 #include "PowerLawCreep.h"
 #include "PowerLawCreepModel.h"
@@ -46,8 +49,11 @@
 #include "PresetVelocity.h"
 #include "Pressure.h"
 #include "PressureAction.h"
+#include "DisplacementAboutAxis.h"
+#include "DisplacementAboutAxisAction.h"
+#include "TorqueReaction.h"
 #include "SolidMechanicsAction.h"
-#include "JIntegralAction.h"
+#include "DomainIntegralAction.h"
 #include "SolidMechInertialForce.h"
 #include "SolidMechImplicitEuler.h"
 #include "SolidModel.h"
@@ -62,6 +68,9 @@ template<>
 InputParameters validParams<SolidMechanicsApp>()
 {
   InputParameters params = validParams<MooseApp>();
+  params.set<bool>("use_legacy_uo_initialization") = true;
+  params.set<bool>("use_legacy_uo_aux_computation") = false;
+
   return params;
 }
 
@@ -97,12 +106,13 @@ SolidMechanicsApp::registerObjects(Factory & factory)
   registerAux(AccumulateAux);
   registerAux(NewmarkAccelAux);
   registerAux(NewmarkVelAux);
-  registerAux(qFunctionJIntegral);
+  registerAux(DomainIntegralQFunction);
   registerAux(ElementsOnLineAux);
 
   registerBoundaryCondition(DashpotBC);
   registerBoundaryCondition(PresetVelocity);
   registerBoundaryCondition(Pressure);
+  registerBoundaryCondition(DisplacementAboutAxis);
 
   registerExecutioner(AdaptiveTransient);
 
@@ -113,6 +123,7 @@ SolidMechanicsApp::registerObjects(Factory & factory)
   registerMaterial(CombinedCreepPlasticity);
   registerMaterial(Elastic);
   registerMaterial(ElasticModel);
+  registerMaterial(InteractionIntegralAuxFields);
   registerMaterial(IsotropicPlasticity);
   registerMaterial(LinearAnisotropicMaterial);
   registerMaterial(LinearGeneralAnisotropicMaterial);
@@ -139,7 +150,10 @@ SolidMechanicsApp::registerObjects(Factory & factory)
   registerPostprocessor(HomogenizedElasticConstants);
   registerPostprocessor(Mass);
   registerPostprocessor(JIntegral);
+  registerPostprocessor(CrackFrontData);
+  registerPostprocessor(InteractionIntegral);
   registerPostprocessor(CavityPressurePostprocessor);
+  registerPostprocessor(TorqueReaction);
 
   registerUserObject(MaterialTensorOnLine);
   registerUserObject(CavityPressureUserObject);
@@ -157,20 +171,27 @@ SolidMechanicsApp::associateSyntax(Syntax & syntax, ActionFactory & action_facto
   syntax.registerActionSyntax("EmptyAction", "BCs/Pressure");
   syntax.registerActionSyntax("PressureAction", "BCs/Pressure/*");
 
+  syntax.registerActionSyntax("EmptyAction", "BCs/DisplacementAboutAxis");
+  syntax.registerActionSyntax("DisplacementAboutAxisAction", "BCs/DisplacementAboutAxis/*");
+
   syntax.registerActionSyntax("SolidMechanicsAction", "SolidMechanics/*");
 
-  syntax.registerActionSyntax("JIntegralAction", "JIntegral","add_user_object");
-  syntax.registerActionSyntax("JIntegralAction", "JIntegral","add_aux_variable");
-  syntax.registerActionSyntax("JIntegralAction", "JIntegral","add_aux_kernel");
-  syntax.registerActionSyntax("JIntegralAction", "JIntegral","add_postprocessor");
+  syntax.registerActionSyntax("DomainIntegralAction", "DomainIntegral","add_user_object");
+  syntax.registerActionSyntax("DomainIntegralAction", "DomainIntegral","add_aux_variable");
+  syntax.registerActionSyntax("DomainIntegralAction", "DomainIntegral","add_aux_kernel");
+  syntax.registerActionSyntax("DomainIntegralAction", "DomainIntegral","add_postprocessor");
+  syntax.registerActionSyntax("DomainIntegralAction", "DomainIntegral","add_vector_postprocessor");
+  syntax.registerActionSyntax("DomainIntegralAction", "DomainIntegral","add_material");
 
   registerAction(PressureAction, "add_bc");
+  registerAction(DisplacementAboutAxisAction, "add_bc");
   registerAction(CavityPressureAction, "add_bc");
   registerAction(CavityPressurePPAction, "add_postprocessor");
   registerAction(CavityPressureUOAction, "add_user_object");
   registerAction(SolidMechanicsAction, "add_kernel");
-  registerAction(JIntegralAction, "add_user_object");
-  registerAction(JIntegralAction, "add_aux_variable");
-  registerAction(JIntegralAction, "add_aux_kernel");
-  registerAction(JIntegralAction, "add_postprocessor");
+  registerAction(DomainIntegralAction, "add_user_object");
+  registerAction(DomainIntegralAction, "add_aux_variable");
+  registerAction(DomainIntegralAction, "add_aux_kernel");
+  registerAction(DomainIntegralAction, "add_postprocessor");
+  registerAction(DomainIntegralAction, "add_material");
 }

@@ -17,17 +17,13 @@
 #include "KernelBase.h"
 #include "ScalarKernel.h"
 
-KernelWarehouse::KernelWarehouse()
+KernelWarehouse::KernelWarehouse() :
+    Warehouse<KernelBase>()
 {
 }
 
 KernelWarehouse::~KernelWarehouse()
 {
-  for (std::vector<KernelBase *>::const_iterator i = _all_kernels.begin(); i != _all_kernels.end(); ++i)
-    delete *i;
-
-  for (std::vector<ScalarKernel *>::const_iterator i = _scalar_kernels.begin(); i != _scalar_kernels.end(); ++i)
-    delete *i;
 }
 
 void
@@ -59,42 +55,41 @@ KernelWarehouse::jacobianSetup()
 }
 
 void
-KernelWarehouse::addKernel(KernelBase *kernel, const std::set<SubdomainID> & block_ids)
+KernelWarehouse::addKernel(MooseSharedPointer<KernelBase> & kernel, const std::set<SubdomainID> & block_ids)
 {
-  _all_kernels.push_back(kernel);
+  _all_ptrs.push_back(kernel);
 
+  KernelBase * kernel_ptr = kernel.get();
+  _all_objects.push_back(kernel_ptr);
+
+  // Non-block restricted
   if (block_ids.empty() || block_ids.find(Moose::ANY_BLOCK_ID) != block_ids.end())
   {
-    if (dynamic_cast<TimeKernel *>(kernel) != NULL)
-    {
-      _time_global_kernels.push_back(kernel);
-    }
+    if (dynamic_cast<TimeKernel *>(kernel_ptr) != NULL)
+      _time_global_kernels.push_back(kernel_ptr);
     else
-    {
-      _nontime_global_kernels.push_back(kernel);
-    }
+      _nontime_global_kernels.push_back(kernel_ptr);
   }
+
+  // Block restricted
   else
   {
     for (std::set<SubdomainID>::iterator it = block_ids.begin(); it != block_ids.end(); ++it)
     {
       SubdomainID blk_id = *it;
-      if (dynamic_cast<TimeKernel *>(kernel) != NULL)
-      {
-        _time_block_kernels[blk_id].push_back(kernel);
-      }
+      if (dynamic_cast<TimeKernel *>(kernel_ptr) != NULL)
+        _time_block_kernels[blk_id].push_back(kernel_ptr);
       else
-      {
-        _nt_block_kernels[blk_id].push_back(kernel);
-      }
+        _nt_block_kernels[blk_id].push_back(kernel_ptr);
     }
   }
 }
 
 void
-KernelWarehouse::addScalarKernel(ScalarKernel *kernel)
+KernelWarehouse::addScalarKernel(MooseSharedPointer<ScalarKernel> & kernel)
 {
-  _scalar_kernels.push_back(kernel);
+  _all_scalar_ptrs.push_back(kernel);
+  _scalar_kernels.push_back(kernel.get());
 }
 
 void
@@ -152,7 +147,7 @@ KernelWarehouse::updateActiveKernels(unsigned int subdomain_id)
 bool
 KernelWarehouse::subdomainsCovered(std::set<SubdomainID> & subdomains_covered, std::set<std::string> & unique_variables) const
 {
-  for (std::vector<KernelBase *>::const_iterator it = _all_kernels.begin(); it != _all_kernels.end(); ++it)
+  for (std::vector<KernelBase *>::const_iterator it = _all_objects.begin(); it != _all_objects.end(); ++it)
     unique_variables.insert((*it)->variable().name());
   for (std::vector<ScalarKernel *>::const_iterator it = _scalar_kernels.begin(); it != _scalar_kernels.end(); ++it)
     unique_variables.insert((*it)->variable().name());

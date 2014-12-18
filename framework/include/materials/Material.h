@@ -36,6 +36,9 @@
 #include "BoundaryRestrictable.h"
 #include "Restartable.h"
 #include "ZeroInterface.h"
+#include "MeshChangedInterface.h"
+#include "OutputInterface.h"
+
 // libMesh includes
 #include "libmesh/quadrature_gauss.h"
 #include "libmesh/elem.h"
@@ -76,7 +79,9 @@ class Material :
   public PostprocessorInterface,
   public DependencyResolverInterface,
   public Restartable,
-  public ZeroInterface
+  public ZeroInterface,
+  public MeshChangedInterface,
+  public OutputInterface
 {
 public:
   Material(const std::string & name, InputParameters parameters);
@@ -227,6 +232,7 @@ Material::getMaterialProperty(const std::string & prop_name)
   // The property may not exist yet, so declare it (declare/getMaterialProperty are referencing the same memory)
   _depend_props.insert(prop_name);
   registerPropName(prop_name, true, Material::CURRENT);
+  _fe_problem.markMatPropRequested(prop_name);
   return _material_data.getProperty<T>(prop_name);
 }
 
@@ -236,6 +242,7 @@ Material::getMaterialPropertyOld(const std::string & prop_name)
 {
   _depend_props.insert(prop_name);
   registerPropName(prop_name, true, Material::OLD);
+  _fe_problem.markMatPropRequested(prop_name);
   return _material_data.getPropertyOld<T>(prop_name);
 }
 
@@ -245,6 +252,7 @@ Material::getMaterialPropertyOlder(const std::string & prop_name)
 {
   _depend_props.insert(prop_name);
   registerPropName(prop_name, true, Material::OLDER);
+  _fe_problem.markMatPropRequested(prop_name);
   return _material_data.getPropertyOlder<T>(prop_name);
 }
 

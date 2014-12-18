@@ -12,11 +12,12 @@
 
 #include "MooseApp.h"
 #include "Problem.h"
+#include "PiecewiseLinear.h"
 
 template<>
 InputParameters validParams<SolidModel>()
 {
-  MooseEnum formulation("Nonlinear3D, AxisymmetricRZ, SphericalR, Linear, PlaneStrain");
+  MooseEnum formulation("Nonlinear3D AxisymmetricRZ SphericalR Linear PlaneStrain");
 
   InputParameters params = validParams<Material>();
   params.addParam<std::string>("appended_property_name", "", "Name appended to material properties to make them unique");
@@ -107,8 +108,10 @@ SolidModel::SolidModel( const std::string & name,
   _has_temp(isCoupled("temp")),
   _temperature(_has_temp ? coupledValue("temp") : _zero),
   _temperature_old(_has_temp ? coupledValueOld("temp") : _zero),
+  _temp_grad(coupledGradient("temp")),
   _alpha(parameters.isParamValid("thermal_expansion") ? getParam<Real>("thermal_expansion") : 0.),
   _alpha_function( parameters.isParamValid("thermal_expansion_function") ? &getFunction("thermal_expansion_function") : NULL),
+  _piecewise_linear_alpha_function(NULL),
   _has_stress_free_temp(false),
   _stress_free_temp(0.0),
   _volumetric_models(),
@@ -139,10 +142,11 @@ SolidModel::SolidModel( const std::string & name,
   _d_stress_dT(createProperty<SymmTensor>("d_stress_dT")),
   _total_strain_increment(0),
   _strain_increment(0),
-  _SED(declareProperty<Real>("strain_energy_density")),
-  _SED_old(declarePropertyOld<Real>("strain_energy_density")),
   _compute_JIntegral(getParam<bool>("compute_JIntegral")),
-  _Eshelby_tensor(declareProperty<ColumnMajorMatrix>("Eshelby_tensor")),
+  _SED(NULL),
+  _SED_old(NULL),
+  _Eshelby_tensor(NULL),
+  _J_thermal_term_vec(NULL),
   _block_id(std::vector<SubdomainID>(blockIDs().begin(), blockIDs().end())),
   _constitutive_active(false),
   _element(NULL),
@@ -228,6 +232,13 @@ SolidModel::SolidModel( const std::string & name,
   {
     mooseError("Cannot specify both thermal_expansion and thermal_expansion_function");
   }
+  if (_compute_JIntegral)
+  {
+    _SED = &declareProperty<Real>("strain_energy_density");
+    _SED_old = &declarePropertyOld<Real>("strain_energy_density");
+    _Eshelby_tensor = &declareProperty<ColumnMajorMatrix>("Eshelby_tensor");
+    _J_thermal_term_vec = &declareProperty<RealVectorValue>("J_thermal_term_vec");
+  }
 
 }
 
@@ -235,9 +246,6 @@ SolidModel::SolidModel( const std::string & name,
 
 SolidModel::~SolidModel()
 {
-  for (std::set<ConstitutiveModel *>::iterator it = _models_to_free.begin(); it != _models_to_free.end(); ++it)
-    delete *it;
-
   delete _local_elasticity_tensor;
   delete _element;
 }
@@ -559,7 +567,8 @@ SolidModel::initQpStatefulProperties()
     (*_crack_rotation)[_qp].identity();
     (*_crack_rotation_old)[_qp].identity();
   }
-  _SED[_qp] = _SED_old[_qp] = 0;
+  if (_SED)
+    (*_SED)[_qp] = (*_SED_old)[_qp] = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -585,18 +594,12 @@ SolidModel::computeProperties()
     computeElasticityTensor();
 
     if (!_constitutive_active)
-    {
       computeStress();
-    }
     else
-    {
       computeConstitutiveModelStress();
-    }
 
     if (_compute_JIntegral)
-    {
       computeStrainEnergyDensity();
-    }
 
     _elastic_strain[_qp] = _elastic_strain_old[_qp] + _strain_increment;
 
@@ -605,9 +608,10 @@ SolidModel::computeProperties()
     finalizeStress();
 
     if (_compute_JIntegral)
-    {
       computeEshelby();
-    }
+
+    if (_compute_JIntegral && _has_temp)
+      computeThermalJvec();
 
     computePreconditioning();
 
@@ -618,7 +622,9 @@ SolidModel::computeProperties()
 
 void SolidModel::computeStrainEnergyDensity()
 {
-  _SED[_qp] = _SED_old[_qp] + _stress[_qp].doubleContraction(_strain_increment)/2 + _stress_old_prop[_qp].doubleContraction(_strain_increment)/2;
+  mooseAssert(_SED, "_SED not initialized");
+  mooseAssert(_SED_old, "_SED_old not initialized");
+  (*_SED)[_qp] = (*_SED_old)[_qp] + _stress[_qp].doubleContraction(_strain_increment)/2 + _stress_old_prop[_qp].doubleContraction(_strain_increment)/2;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -626,6 +632,8 @@ void SolidModel::computeStrainEnergyDensity()
 void
 SolidModel::computeEshelby()
 {
+  mooseAssert(_SED, "_SED not initialized");
+  mooseAssert(_Eshelby_tensor, "_Eshelby_tensor not initialized");
   //Cauchy stress (sigma) in a colum major matrix:
   ColumnMajorMatrix stress_CMM;
   stress_CMM(0,0) = _stress[_qp].xx();
@@ -660,9 +668,9 @@ SolidModel::computeEshelby()
 
   ColumnMajorMatrix WI;
   WI.identity();
-  WI *= _SED[_qp];
+  WI *= (*_SED)[_qp];
   WI *= detF;
-  _Eshelby_tensor[_qp] = WI - FTP;
+  (*_Eshelby_tensor)[_qp] = WI - FTP;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -827,6 +835,14 @@ SolidModel::initialSetup()
       }
     }
   }
+
+  if (_compute_JIntegral && _alpha_function)
+  {
+    _piecewise_linear_alpha_function = dynamic_cast<PiecewiseLinear * >(_alpha_function);
+    if ( !_piecewise_linear_alpha_function )
+      mooseError("thermal_expansion_function must be PiecewiseLinear if compute_JIntegral=true");
+  }
+
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -1402,9 +1418,9 @@ SolidModel::createConstitutiveModel(const std::string & cm_name, const InputPara
 {
 
   Factory & factory = _app.getFactory();
-  ConstitutiveModel * cm = dynamic_cast<ConstitutiveModel*>(factory.create(cm_name, _name+"Model", params));
+  MooseSharedPointer<ConstitutiveModel> cm = MooseSharedNamespace::dynamic_pointer_cast<ConstitutiveModel>(factory.create(cm_name, _name+"Model", params));
 
-  if (!cm)
+  if (!cm.get())
   {
     mooseError("\""+_name+"\" is not a ConstitutiveModel");
   }
@@ -1413,7 +1429,7 @@ SolidModel::createConstitutiveModel(const std::string & cm_name, const InputPara
   _constitutive_active = true;
   for (unsigned i(0); i < _block_id.size(); ++i)
   {
-    _constitutive_model[_block_id[i]] = cm;
+    _constitutive_model[_block_id[i]] = cm.get();
   }
 
 }
@@ -1430,5 +1446,30 @@ SolidModel::initStatefulProperties(unsigned n_points)
     const SubdomainID current_block = _current_elem->subdomain_id();
     ConstitutiveModel* cm = _constitutive_model[current_block];
     cm->initStatefulProperties( n_points );
+  }
+}
+
+void
+SolidModel::computeThermalJvec()
+{
+  mooseAssert(_J_thermal_term_vec, "_J_thermal_term_vec not initialized");
+
+  Real alpha(_alpha);
+  Real dalpha_dT = 0.0;
+
+  if (_piecewise_linear_alpha_function)
+  {
+    Point p;
+    alpha = _piecewise_linear_alpha_function->value(_temperature[_qp],p);
+    dalpha_dT = _piecewise_linear_alpha_function->timeDerivative(_temperature[_qp],p);
+  }
+
+  Real stress_trace;
+  stress_trace = _stress[_qp].xx() + _stress[_qp].yy() + _stress[_qp].zz();
+
+  for (unsigned int i=0; i<3; ++i)
+  {
+    Real dthermstrain_dx = alpha*_temp_grad[_qp](i) + dalpha_dT*_temp_grad[_qp](i)*(_temperature[_qp] - _stress_free_temp);
+    (*_J_thermal_term_vec)[_qp](i) = stress_trace*dthermstrain_dx;
   }
 }

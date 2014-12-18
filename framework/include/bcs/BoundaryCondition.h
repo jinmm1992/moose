@@ -30,6 +30,8 @@
 #include "Assembly.h"
 #include "Restartable.h"
 #include "ZeroInterface.h"
+#include "MeshChangedInterface.h"
+
 // libMesh
 #include "libmesh/elem.h"
 #include "libmesh/vector_value.h"
@@ -61,7 +63,8 @@ class BoundaryCondition :
   public PostprocessorInterface,
   public GeometricSearchInterface,
   public Restartable,
-  public ZeroInterface
+  public ZeroInterface,
+  public MeshChangedInterface
 {
 public:
 
@@ -112,9 +115,6 @@ protected:
 
   /// Mesh this BC is defined on
   MooseMesh & _mesh;
-
-//  /// dimension of the mesh
-//  unsigned int _dim;
 };
 
 #endif /* BOUNDARYCONDITION_H */

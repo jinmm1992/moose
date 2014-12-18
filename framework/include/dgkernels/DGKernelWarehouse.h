@@ -15,21 +15,16 @@
 #ifndef DGKERNELWAREHOUSE_H
 #define DGKERNELWAREHOUSE_H
 
-#include "Moose.h"
-
-//libMesh
-#include "libmesh/libmesh_common.h"
+#include "Warehouse.h"
 
 #include <vector>
-#include <map>
-#include <set>
 
 class DGKernel;
 
 /**
  * Holds kernels and provides some services
  */
-class DGKernelWarehouse
+class DGKernelWarehouse : public Warehouse<DGKernel>
 {
 public:
   DGKernelWarehouse();
@@ -42,24 +37,23 @@ public:
   void jacobianSetup();
 
   /**
-   * Get list of all kernels
-   * @return The list of all active kernels
-   */
-  const std::vector<DGKernel *> & all() { return _all_dg_kernels; }
-
-  /**
    * Get the list of all active kernels
    * @return The list of all active kernels
    */
-  const std::vector<DGKernel *> & active() { return _active_dg_kernels; }
+  const std::vector<DGKernel *> & active() const { return _active_dg_kernels; }
 
-  void addDGKernel(DGKernel *dg_kernel);
+  void addDGKernel(MooseSharedPointer<DGKernel> & dg_kernel);
 
   void updateActiveDGKernels(Real t, Real dt);
 
 protected:
+  /**
+   * We are using MooseSharedPointer to handle the cleanup of the pointers at the end of execution.
+   * This is necessary since several warehouses might be sharing a single instance of a MooseObject.
+   */
+  std::vector<MooseSharedPointer<DGKernel> > _all_ptrs;
+
   std::vector<DGKernel *> _active_dg_kernels;
-  std::vector<DGKernel *> _all_dg_kernels;
 };
 
 #endif // DGKERNELWAREHOUSE_H

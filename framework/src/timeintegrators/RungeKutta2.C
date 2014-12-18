@@ -54,7 +54,6 @@ RungeKutta2::computeTimeDerivatives()
   _du_dot_du = 1. / _dt;
 
   _u_dot.close();
-  _du_dot_du.close();
 }
 
 void
@@ -68,10 +67,10 @@ RungeKutta2::solve()
   _fe_problem.time() = time_half;
   _fe_problem.getNonlinearSystem().sys().solve();
 
-  _fe_problem.copyOldSolutions();
+  _fe_problem.advanceState();
 
   // ---------------------------------
-  Moose::out << " 2. stage" << std::endl;
+  _console << " 2. stage" << std::endl;
   _stage = 2;
   _fe_problem.time() = time;
   _fe_problem.timeOld() = time_half;

@@ -50,7 +50,7 @@
     disp_x = disp_x
     disp_y = disp_y
     penalty = 1e6
-    model = experimental
+    model = frictionless
     tangential_tolerance = 0.01
   [../]
 []
@@ -59,6 +59,7 @@
   [./pid]
     type = ProcessorIDAux
     variable = pid
+    execute_on = 'initial timestep'
   [../]
   [./status]
     type = PenetrationAux

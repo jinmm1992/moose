@@ -54,10 +54,10 @@ NonlinearEigen::init()
   if (_free_iter>0)
   {
     // save the initial guess
-    _problem.copyOldSolutions();
+    _problem.advanceState();
 
     // free power iterations
-    Moose::out << std::endl << " Free power iteration starts"  << std::endl;
+    _console << std::endl << " Free power iteration starts"  << std::endl;
 
     Real initial_res;
     inversePowerIteration(_free_iter, _free_iter, _pfactor, false,
@@ -74,7 +74,7 @@ NonlinearEigen::init()
       _problem.timeStep()++;
       Real t = _problem.time();
       _problem.time() = _problem.timeStep();
-      _output_warehouse.outputStep();
+      _output_warehouse.outputStep(OUTPUT_TIMESTEP_END);
       _problem.time() = t;
     }
   }
@@ -93,14 +93,13 @@ NonlinearEigen::execute()
 void
 NonlinearEigen::takeStep()
 {
-  Moose::out << " Nonlinear iteration starts"  << std::endl;
+  _console << " Nonlinear iteration starts"  << std::endl;
 
   // nonlinear solve
   _problem.computeUserObjects(EXEC_TIMESTEP_BEGIN, UserObjectWarehouse::PRE_AUX);
   preSolve();
-  _problem.updateMaterials();
   _problem.timestepSetup();
-  _problem.copyOldSolutions();
+  _problem.advanceState();
   _problem.computeUserObjects(EXEC_TIMESTEP_BEGIN, UserObjectWarehouse::POST_AUX);
 
   nonlinearSolve(_rel_tol, _abs_tol, _pfactor, _eigenvalue);

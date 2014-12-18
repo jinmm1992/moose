@@ -23,7 +23,7 @@ InputParameters validParams<UserObject>()
 
   // Add the SetupInterface parameter, 'execute_on', and set it to a default of 'timestep'
   params += validParams<SetupInterface>();
-  params.set<MooseEnum>("execute_on") = "timestep";
+  params.set<MultiMooseEnum>("execute_on") = "timestep";
 
   params.addParam<bool>("use_displaced_mesh", false, "Whether or not this object should use the displaced mesh for computation.  Note that in the case this is true but no displacements are provided in the Mesh block the undisplaced mesh will still be used.");
   params.addParamNamesToGroup("use_displaced_mesh", "Advanced");
@@ -36,7 +36,9 @@ InputParameters validParams<UserObject>()
 UserObject::UserObject(const std::string & name, InputParameters parameters) :
     MooseObject(name, parameters),
     SetupInterface(parameters),
+    FunctionInterface(parameters),
     Restartable(name, parameters, "UserObjects"),
+    MeshChangedInterface(parameters),
     _subproblem(*parameters.get<SubProblem *>("_subproblem")),
     _fe_problem(*parameters.get<FEProblem *>("_fe_problem")),
     _tid(parameters.get<THREAD_ID>("_tid")),

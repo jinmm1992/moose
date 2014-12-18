@@ -29,6 +29,7 @@ InputParameters validParams<KernelBase>()
   params += validParams<TransientInterface>();
   params += validParams<BlockRestrictable>();
   params += validParams<RandomInterface>();
+  params += validParams<MeshChangedInterface>();
 
   params.addRequiredParam<NonlinearVariableName>("variable", "The name of the variable that this Kernel operates on");
   params.addParam<std::vector<AuxVariableName> >("save_in", "The name of auxiliary variables to save this Kernel's residual contributions to.  Everything about that variable must match everything about this variable (the type, what blocks it's on, etc.)");
@@ -51,11 +52,12 @@ KernelBase::KernelBase(const std::string & name, InputParameters parameters) :
     UserObjectInterface(parameters),
     TransientInterface(parameters, name, "kernels"),
     PostprocessorInterface(parameters),
-    MaterialPropertyInterface(parameters),
+    MaterialPropertyInterface(name, parameters),
     RandomInterface(name, parameters, *parameters.get<FEProblem *>("_fe_problem"), parameters.get<THREAD_ID>("_tid"), false),
     GeometricSearchInterface(parameters),
     Restartable(name, parameters, "Kernels"),
     ZeroInterface(parameters),
+    MeshChangedInterface(parameters),
     _subproblem(*parameters.get<SubProblem *>("_subproblem")),
     _fe_problem(*parameters.get<FEProblem *>("_fe_problem")),
     _sys(*parameters.get<SystemBase *>("_sys")),

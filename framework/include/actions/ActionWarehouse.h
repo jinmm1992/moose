@@ -20,7 +20,10 @@
 #include <map>
 #include <ostream>
 
+// MOOSE includes
 #include "Action.h"
+#include "ConsoleStreamInterface.h"
+#include "Warehouse.h"
 
 /// Typedef to hide implementation details
 typedef std::vector<Action *>::iterator ActionIterator;
@@ -33,7 +36,9 @@ class ActionFactory;
 /**
  * Storage for action instances.
  */
-class ActionWarehouse
+class ActionWarehouse :
+  public Warehouse<Action>,
+  public ConsoleStreamInterface
 {
 public:
   ActionWarehouse(MooseApp & app, Syntax & syntax, ActionFactory & factory);
@@ -58,7 +63,7 @@ public:
   /**
    * This method add an \p Action instance to the warehouse.
    */
-  void addActionBlock(Action * blk);
+  void addActionBlock(MooseSharedPointer<Action> blk);
 
   /**
    * This method checks the actions stored in the warehouse against the list of required registered
@@ -119,10 +124,17 @@ public:
 
   //// Getters
   Syntax & syntax() { return _syntax; }
-  MooseMesh * & mesh() { return _mesh; }
-  MooseMesh * & displacedMesh() { return _displaced_mesh; }
-  FEProblem * & problem() { return _problem; }
-  Executioner * & executioner() { return _executioner; }
+
+  // We are not really using the reference counting capabilities of
+  // shared pointers here, just their memory management capability.
+  // Therefore, _mesh is actually being used more like a unique_ptr in
+  // this context.  Since full support for unique_ptr is not quite
+  // available yet, we've implemented it as a MooseSharedPointer.
+  MooseSharedPointer<MooseMesh> & mesh() { return _mesh; }
+  MooseSharedPointer<MooseMesh> & displacedMesh() { return _displaced_mesh; }
+
+  MooseSharedPointer<FEProblem> & problem() { return _problem; }
+  MooseSharedPointer<Executioner> & executioner() { return _executioner; }
   MooseApp & mooseApp() { return _app; }
   const std::string & getCurrentTaskName() const { return _current_task; }
 
@@ -135,6 +147,8 @@ protected:
    * @param task The name of the task to find and build Actions for.
    */
   void buildBuildableActions(const std::string &task);
+
+  std::vector<MooseSharedPointer<Action> > _all_ptrs;
 
   /// The MooseApp this Warehouse is associated with
   MooseApp & _app;
@@ -169,13 +183,16 @@ protected:
   //
 
   /// Mesh class
-  MooseMesh * _mesh;
+  MooseSharedPointer<MooseMesh> _mesh;
+
   /// Possible mesh for displaced problem
-  MooseMesh * _displaced_mesh;
+  MooseSharedPointer<MooseMesh> _displaced_mesh;
+
   /// Problem class
-  FEProblem * _problem;
+  MooseSharedPointer<FEProblem> _problem;
+
   /// Executioner for the simulation (top-level class, is stored in MooseApp, where it is freed)
-  Executioner * _executioner;
+  MooseSharedPointer<Executioner> _executioner;
 };
 
 #endif // ACTIONWAREHOUSE_H

@@ -19,6 +19,8 @@
 #include "PetscSupport.h"
 #include "Executioner.h"
 #include "MooseApp.h"
+#include "pcrecpp.h"
+#include "Moose.h"
 
 template<>
 InputParameters validParams<Console>()
@@ -28,12 +30,12 @@ InputParameters validParams<Console>()
 
   // Get the parameters from the base class
   InputParameters params = validParams<TableOutput>();
-
-  params.suppressParameter<bool>("output_vector_postprocessors");
+  params += TableOutput::enableOutputTypes("system_information scalar postprocessor input");
 
   // Screen and file output toggles
   params.addParam<bool>("output_screen", true, "Output to the screen");
   params.addParam<bool>("output_file", false, "Output to the file");
+  params.addParam<bool>("show_multiapp_name", false, "Indent multiapp output using the multiapp name");
 
   // Table fitting options
   params.addParam<unsigned int>("max_rows", 15, "The maximum number of postprocessor/scalar values displayed on screen during a timestep (set to 0 for unlimited)");
@@ -43,7 +45,6 @@ InputParameters validParams<Console>()
   params.addParam<bool>("verbose", false, "Print detailed diagnostics on timestep calculation");
 
   // Basic table output controls
-  params.addParam<bool>("use_color", true, "If true, color will be added to the output");
   params.addParam<bool>("scientific_time", false, "Control the printing of time and dt in scientific notation");
   params.addParam<unsigned int>("time_precision", "The number of significant digits that are printed on time related outputs");
 
@@ -68,8 +69,11 @@ InputParameters validParams<Console>()
   multiplier.push_back(2);
   params.addParam<std::vector<Real> >("outlier_multiplier", multiplier, "Multiplier utilized to determine if a residual norm is an outlier. If the variable residual is less than multiplier[0] times the total residual it is colored red. If the variable residual is less than multiplier[1] times the average residual it is colored yellow.");
 
+  // By default set System Information to output on initial
+  params.set<MultiMooseEnum>("output_system_information_on") = "initial";
+
   // Advanced group
-  params.addParamNamesToGroup("max_rows fit_node verbose", "Advanced");
+  params.addParamNamesToGroup("max_rows fit_node verbose show_multiapp_name", "Advanced");
 
   // Performance log group
   params.addParamNamesToGroup("perf_log setup_log_early setup_log solve_log perf_header", "Perf Log");
@@ -80,11 +84,13 @@ InputParameters validParams<Console>()
   // Variable norms group
   params.addParamNamesToGroup("outlier_variable_norms all_variable_norms outlier_multiplier", "Norms");
 
-  // By default the Console object outputs non linear iterations
-  params.set<bool>("nonlinear_residuals") = true;
+  // By default the Console object outputs nonlinear iterations and failed timesteps
+  params.set<MultiMooseEnum>("output_on").push_back("nonlinear");
+  params.set<MultiMooseEnum>("output_on").push_back("failed");
 
-  // Set outputting of failed solves to true for Console outputters
-  params.set<bool>("output_failed") = true;
+  // By default postprocessors and scalar are only output at the end of a timestep
+  params.set<MultiMooseEnum>("output_postprocessors_on") = "timestep_end";
+  params.set<MultiMooseEnum>("output_scalars_on") = "timestep_end";
 
   return params;
 }
@@ -93,7 +99,6 @@ Console::Console(const std::string & name, InputParameters parameters) :
     TableOutput(name, parameters),
     _max_rows(getParam<unsigned int>("max_rows")),
     _fit_mode(getParam<MooseEnum>("fit_mode")),
-    _use_color(false),
     _scientific_time(getParam<bool>("scientific_time")),
     _write_file(getParam<bool>("output_file")),
     _write_screen(getParam<bool>("output_screen")),
@@ -112,8 +117,10 @@ Console::Console(const std::string & name, InputParameters parameters) :
     _outlier_variable_norms(getParam<bool>("outlier_variable_norms")),
     _outlier_multiplier(getParam<std::vector<Real> >("outlier_multiplier")),
     _precision(isParamValid("time_precision") ? getParam<unsigned int>("time_precision") : 0),
-    _timing(_app.getParam<bool>("timing"))
+    _timing(_app.getParam<bool>("timing")),
+    _console_buffer(_app.getOutputWarehouse().consoleBuffer())
 {
+
   // If --timing was used from the command-line, do nothing, all logs are enabled
   if (!_timing)
   {
@@ -132,66 +139,40 @@ Console::Console(const std::string & name, InputParameters parameters) :
   }
 
   // Set output coloring
-  if (getParam<bool>("use_color"))
+  if (Moose::_color_console)
   {
     char * term_env = getenv("TERM");
     if (term_env)
     {
       std::string term(term_env);
-      if (term == "xterm-256color" || term == "xterm")
-        _use_color = true;
+      if (term != "xterm-256color" && term != "xterm")
+        Moose::_color_console = false;
     }
   }
-
-  // If file output is desired, wipe out the existing file if not recovering
-  if (_write_file && !_app.isRecovering())
-    writeStream(false);
 }
 
 Console::~Console()
 {
   // Write the libMesh performance log header
   if (_perf_header)
-  {
-    if (_write_screen && !_timing)
-      Moose::out << Moose::perf_log.get_info_header();
-
-    if (_write_file)
-      _file_output_stream << Moose::perf_log.get_info_header();
-  }
+    write(Moose::perf_log.get_info_header(), false);
 
   // Write the solve log (Moose Test Performance)
   if (_solve_log)
-  {
-    if (_write_screen && !_timing)
-      Moose::out << Moose::perf_log.get_perf_info();
-    if (_write_file)
-      _file_output_stream << Moose::perf_log.get_perf_info();
-  }
+    write(Moose::perf_log.get_perf_info(), false);
 
   // Write the setup log (Setup Performance)
   if (_setup_log)
-  {
-    if (_write_screen && !_timing)
-      Moose::out << Moose::setup_perf_log.get_perf_info();
-    if (_write_file)
-      _file_output_stream << Moose::setup_perf_log.get_perf_info();
-  }
+    write(Moose::setup_perf_log.get_perf_info(), false);
 
   // Write the libMesh log
 #ifdef LIBMESH_ENABLE_PERFORMANCE_LOGGING
   if (_libmesh_log)
-  {
-    if (_write_screen && !_timing)
-      Moose::out << libMesh::perflog.get_perf_info();
-    if (_write_file)
-      _file_output_stream << libMesh::perflog.get_perf_info();
-  }
+    write(libMesh::perflog.get_perf_info(), false);
 #endif
 
   // Write the file output stream
-  if (_write_file)
-    writeStream();
+  writeStreamToFile();
 
   /* If --timing was not used disable the logging b/c the destructor of these
    * object does the output, if --timing was used do nothing because all other
@@ -211,6 +192,14 @@ Console::~Console()
 void
 Console::initialSetup()
 {
+  // Set the string for multiapp output indenting
+  if (_app.getOutputWarehouse().multiappLevel() > 0)
+    _multiapp_indent = COLOR_CYAN + _app.name() + ": " + COLOR_DEFAULT;
+
+  // If file output is desired, wipe out the existing file if not recovering
+  if (!_app.isRecovering())
+    writeStreamToFile(false);
+
   // Enable verbose output if Executioner has it enabled
   if (_app.getExecutioner()->isParamValid("verbose") && _app.getExecutioner()->getParam<bool>("verbose"))
   {
@@ -218,79 +207,13 @@ Console::initialSetup()
     _pars.set<bool>("verbose") = true;
   }
 
+  // Display a message to indicate the application is running (useful for MultiApps)
+  if (_problem_ptr->hasMultiApps() || _app.getOutputWarehouse().multiappLevel() > 0)
+    write(std::string("\nRunning App: ") + _app.name() + "\n");
+
   // Output the performance log early
   if (getParam<bool>("setup_log_early"))
-  {
-    if (_write_screen)
-      Moose::out << Moose::setup_perf_log.get_perf_info() << std::endl;
-
-    if (_write_file)
-      _file_output_stream << Moose::setup_perf_log.get_perf_info() << std::endl;
-  }
-
-  // Output the system information
-  if (_system_information)
-    outputSystemInformation();
-
-  // Output the timestep information
-  timestepSetup();
-}
-
-void
-Console::timestepSetup()
-{
-  // Do nothing if output is turned off
-  // Do nothing if the problem is steady or if it is not an output interval
-  // Do nothing if output_initial = false and the timestep is zero
-  if (!_allow_output || !checkInterval() || (!_output_initial && timeStep() == 0))
-    return;
-
-  // Stream to build the time step information
-  std::stringstream oss;
-
-  // Write timestep data for transient executioners
-  if (_transient)
-  {
-    // Get the length of the time step string
-    std::ostringstream time_step_string;
-    time_step_string << timeStep();
-    unsigned int n = time_step_string.str().size();
-    if (n < 2)
-      n = 2;
-
-    // Write time step and time information
-    oss << std::endl <<  "Time Step " << std::setw(n) << timeStep();
-
-    // Set precision
-    if (_precision > 0)
-      oss << std::setw(_precision) << std::setprecision(_precision) << std::setfill('0') << std::showpoint;
-
-    // Show scientific notation
-    if (_scientific_time)
-      oss << std::scientific;
-
-    // Print the time
-    oss << ", time = " << time() << std::endl;
-
-    // Show old time information, if desired
-    if (_verbose)
-      oss << "          old time = " << std::left << timeOld() << std::endl;
-
-    // Show the time delta information
-    oss  << "                dt = "<< std::left << dt() << std::endl;
-
-    // Show the old time delta information, if desired
-    if (_verbose)
-      oss  << "            old dt = " << std::left << _dt_old << std::endl;
-  }
-
-  // Output to the screen
-  if (_write_screen)
-    Moose::out << oss.str();
-
-  // Output to the file
-  if (_write_file)
-    _file_output_stream << oss.str();
+    write(Moose::setup_perf_log.get_perf_info());
 }
 
 std::string
@@ -300,8 +223,66 @@ Console::filename()
 }
 
 void
-Console::writeStream(bool append)
+Console::output(const OutputExecFlagType & type)
 {
+  // Return if the current output is not on the desired interval
+  if (type != OUTPUT_FINAL && !onInterval())
+    return;
+
+  // Output the system information first; this forces this to be the first item to write by default
+  // However, 'output_system_information_on' still operates correctly, so it may be changed by the user
+  if (shouldOutput("system_information", type))
+    outputSystemInformation();
+
+  // Write the input
+  if (shouldOutput("input", type))
+    outputInput();
+
+  // Write the timestep information ("Time Step 0 ..."), this is may be controlled with "execute_on"
+  if (type == OUTPUT_TIMESTEP_BEGIN || (type == OUTPUT_INITIAL && _output_on.contains(OUTPUT_INITIAL)))
+    writeTimestepInformation();
+
+  // Print Non-linear Residual (control with "execute_on")
+  if (type == OUTPUT_NONLINEAR && _output_on.contains(OUTPUT_NONLINEAR))
+  {
+    if (_write_screen)
+      Moose::out << _multiapp_indent << std::setw(2) << _nonlinear_iter << " Nonlinear |R| = " << outputNorm(_old_nonlinear_norm, _norm) << std::endl;
+
+    if (_write_file)
+      _file_output_stream << std::setw(2) << _nonlinear_iter << " Nonlinear |R| = " << std::scientific << _norm << std::endl;
+  }
+
+  // Print Linear Residual (control with "execute_on")
+  else if (type == OUTPUT_LINEAR && _output_on.contains(OUTPUT_LINEAR))
+  {
+    if (_write_screen)
+      Moose::out << _multiapp_indent << std::setw(7) << _linear_iter << " Linear |R| = " <<  outputNorm(_old_linear_norm, _norm) << std::endl;
+
+    if (_write_file)
+      _file_output_stream << std::setw(7) << _linear_iter << std::scientific << " Linear |R| = " << std::scientific << _norm << std::endl;
+  }
+
+  // Write variable norms
+  else if (type == OUTPUT_TIMESTEP_END)
+    writeVariableNorms();
+
+  // Write Postprocessors and Scalars
+  if (shouldOutput("postprocessors", type))
+    outputPostprocessors();
+
+  if (shouldOutput("scalars", type))
+    outputScalarVariables();
+
+  // Write the file
+  writeStreamToFile();
+}
+
+void
+Console::writeStreamToFile(bool append)
+{
+  if (!_write_file)
+    return;
+
   // Create the stream
   std::ofstream output;
 
@@ -320,38 +301,49 @@ Console::writeStream(bool append)
 }
 
 void
-Console::output()
+Console::writeTimestepInformation()
 {
-  // Print Non-linear Residual
-  if (onNonlinearResidual())
-  {
-    if (_write_screen)
-      Moose::out << std::setw(2) << _nonlinear_iter << " Nonlinear |R| = " << outputNorm(_old_nonlinear_norm, _norm) << std::endl;
+  // Stream to build the time step information
+  std::stringstream oss;
 
-    if (_write_file)
-      _file_output_stream << std::setw(2) << _nonlinear_iter << " Nonlinear |R| = " << std::scientific << _norm << std::endl;
+  // Write timestep data for transient executioners
+  if (_transient)
+  {
+    // Get the length of the time step string
+    std::ostringstream time_step_string;
+    time_step_string << timeStep();
+    unsigned int n = time_step_string.str().size();
+    if (n < 2)
+      n = 2;
+
+    // Write time step and time information
+    oss << std::endl << "Time Step " << std::setw(n) << timeStep();
+
+    // Set precision
+    if (_precision > 0)
+      oss << std::setw(_precision) << std::setprecision(_precision) << std::setfill('0') << std::showpoint;
+
+    // Show scientific notation
+    if (_scientific_time)
+      oss << std::scientific;
+
+    // Print the time
+    oss << ", time = " << time() << std::endl;
+
+    // Show old time information, if desired
+    if (_verbose)
+      oss << std::right << std::setw(21) << std::setfill(' ') << "old time = " << std::left << timeOld() << '\n';
+
+    // Show the time delta information
+    oss << std::right << std::setw(21) << std::setfill(' ') << "dt = "<< std::left << dt() << '\n';
+
+    // Show the old time delta information, if desired
+    if (_verbose)
+      oss << std::right << std::setw(21) << std::setfill(' ') << "old dt = " << _dt_old << '\n';
   }
 
-  // Print Linear Residual
-  else if (onLinearResidual())
-  {
-    if (_write_screen)
-      Moose::out << std::setw(7) << _linear_iter << " Linear |R| = " <<  outputNorm(_old_linear_norm, _norm) << std::endl;
-
-    if (_write_file)
-      _file_output_stream << std::setw(7) << _linear_iter << std::scientific << " Linear |R| = " << std::scientific << _norm << std::endl;
-  }
-
-  // Call the base class output function
-  else
-  {
-    writeVariableNorms();
-    TableOutput::output();
-  }
-
-  // Write the file
-  if (_write_file)
-    writeStream();
+  // Output to the screen
+  write(oss.str());
 }
 
 void
@@ -398,12 +390,12 @@ Console::writeVariableNorms()
       }
 
       // Set the color, RED if the variable norm is 0.8 (default) of the total norm
-      std::string color = YELLOW;
+      std::string color = COLOR_YELLOW;
       if (_outlier_variable_norms && (var_norm > _outlier_multiplier[0] * avg_norm * n_vars) )
-        color = RED;
+        color = COLOR_RED;
 
       // Display the residual
-      oss << "  " << var_name << ": " << MooseUtils::colorText(color, std::sqrt(var_norm), _use_color) << '\n';
+      oss << "  " << var_name << ": " << std::scientific << color << std::sqrt(var_norm) << COLOR_DEFAULT << '\n';
     }
 
     // GREEN
@@ -415,41 +407,35 @@ Console::writeVariableNorms()
         oss << "\nVariable Residual Norms:\n";
         header = true;
       }
-      oss << "  " << var_name << ": " <<  MooseUtils::colorText(GREEN, std::sqrt(var_norm), _use_color) << '\n';
+      oss << "  " << var_name << ": " << std::scientific << COLOR_GREEN << std::sqrt(var_norm) << COLOR_DEFAULT << '\n';
     }
   }
 
   // Update the output streams
-  if (_write_screen)
-    Moose::out << oss.str() << std::endl;
-
-  if (_write_file)
-    _file_output_stream << oss.str() << std::endl;
+  write(oss.str());
 }
 
 // Quick helper to output the norm in color
 std::string
 Console::outputNorm(Real old_norm, Real norm)
 {
-  std::string color(GREEN);
+  std::string color = COLOR_GREEN;
 
-  // Use color
-  if (_use_color)
-  {
-    // Red if the residual went up...
-    if (norm > old_norm)
-      color = RED;
-    // Yellow if change is less than 5%
-    else if ((old_norm - norm) / old_norm <= 0.05)
-      color = YELLOW;
-  }
+  // Red if the residual went up...
+  if (norm > old_norm)
+    color = COLOR_RED;
+  // Yellow if change is less than 5%
+  else if ((old_norm - norm) / old_norm <= 0.05)
+    color = COLOR_YELLOW;
 
-  // Return the colored text
-  return MooseUtils::colorText<Real>(color, norm, _use_color);
+  std::stringstream oss;
+  oss << std::scientific << color << norm << COLOR_DEFAULT;
+
+  return oss.str();
 }
 
 
-// Free function for stringstream formatting
+// Method for stringstream formatting
 void
 Console::insertNewline(std::stringstream &oss, std::streampos &begin, std::streampos &curr)
 {
@@ -459,6 +445,24 @@ Console::insertNewline(std::stringstream &oss, std::streampos &begin, std::strea
      begin = oss.tellp();
      oss << std::setw(_field_width + 2) << "";  // "{ "
    }
+}
+
+void
+Console::outputInput()
+{
+  if (!_write_screen && !_write_file)
+    return;
+
+  std::ostringstream oss;
+  oss << "--- " << _app.getInputFileName() << " ------------------------------------------------------";
+  _app.actionWarehouse().printInputFile(oss);
+  oss << "\n";
+
+  if (_write_screen)
+    Moose::out << oss.str() << std::endl;
+
+  if (_write_file)
+    _file_output_stream << oss.str() << std::endl;
 }
 
 void
@@ -472,12 +476,7 @@ Console::outputPostprocessors()
     oss << "\nPostprocessor Values:\n";
     _postprocessor_table.printTable(oss, _max_rows, _fit_mode);
     oss << std::endl;
-
-    if (_write_screen)
-      Moose::out << oss.str();
-
-    if (_write_file)
-      _file_output_stream << oss.str();
+    write(oss.str());
   }
 }
 
@@ -493,18 +492,58 @@ Console::outputScalarVariables()
     if (processor_id() == 0)
       _scalar_table.printTable(oss, _max_rows, _fit_mode);
     oss << std::endl;
-
-    if (_write_screen)
-      Moose::out << oss.str();
-
-    if (_write_file)
-      _file_output_stream << oss.str();
+    write(oss.str());
   }
+}
+
+
+void
+Console::indentMessage(std::string & message)
+{
+  // Indent all lines after the first
+  pcrecpp::RE re("\n(?!\\Z)");
+  re.GlobalReplace(std::string("\n") + _multiapp_indent, &message);
+
+  // Prepend indent string at the front of the message
+  message = _multiapp_indent + message;
+}
+
+void
+Console::write(std::string message, bool indent)
+{
+  // Do nothing if the message is empty, writing empty strings messes with multiapp indenting
+  if (message.empty())
+    return;
+
+  // Write the message to file
+  if (_write_file)
+    _file_output_stream << message << std::endl;
+
+  // Apply MultiApp indenting
+  if (indent)
+    indentMessage(message);
+
+  // Write message to the screen
+  if (_write_screen)
+    Moose::out << message;
+}
+
+void
+Console::mooseConsole(const std::string & message)
+{
+  // Write the messages
+  write(message);
+
+  // Flush the stream to the screen
+  Moose::out << std::flush;
 }
 
 void
 Console::outputSystemInformation()
 {
+  // Don't build this information if nothing is to be written
+  if (!_write_screen && !_write_file)
+    return;
 
   std::stringstream oss;
 
@@ -512,10 +551,19 @@ Console::outputSystemInformation()
   if (_app.getSystemInfo() != NULL)
     oss << _app.getSystemInfo()->getInfo();
 
-  oss << std::left << "\n"
+  if (_problem_ptr->legacyUoAuxComputation() || _problem_ptr->legacyUoInitialization())
+  {
+    oss << "LEGACY MODES ENABLED:\n";
+    if (_problem_ptr->legacyUoAuxComputation())
+      oss << "  Computing EXEC_RESIDUAL AuxKernel types when any UserObject type is executed.\n";
+    if (_problem_ptr->legacyUoInitialization())
+      oss << "  Computing all UserObjects during initial setup.\n";
+  }
+
+  oss << std::left << '\n'
       << "Parallelism:\n"
-      << std::setw(_field_width) << "  Num Processors: "       << static_cast<std::size_t>(n_processors()) << '\n'
-      << std::setw(_field_width) << "  Num Threads: "         << static_cast<std::size_t>(n_threads()) << '\n'
+      << std::setw(_field_width) << "  Num Processors: " << static_cast<std::size_t>(n_processors()) << '\n'
+      << std::setw(_field_width) << "  Num Threads: " << static_cast<std::size_t>(n_threads()) << '\n'
       << '\n';
 
   MooseMesh & moose_mesh = _problem_ptr->mesh();
@@ -545,7 +593,7 @@ Console::outputSystemInformation()
   {
     const System & system = eq.get_system(i);
     if (system.system_type() == "TransientNonlinearImplicit")
-      oss <<  "Nonlinear System:" << '\n';
+      oss << "Nonlinear System:" << '\n';
     else if (system.system_type() == "TransientExplicit")
       oss << "Auxiliary System:" << '\n';
     else
@@ -648,16 +696,14 @@ Console::outputSystemInformation()
     oss << std::setw(_field_width) << "  TimeStepper: " << time_stepper << '\n';
 
   oss << std::setw(_field_width) << "  Solver Mode: " << Moose::stringify<Moose::SolveType>(_problem_ptr->solverParams()._type) << '\n';
+
+  const std::string & pc_desc = _problem_ptr->getPreconditionerDescription();
+  if (!pc_desc.empty())
+    oss << std::setw(_field_width) << "  Preconditioner: " << pc_desc << '\n';
   oss << '\n';
 
-  oss.flush();
-
   // Output the information
-  if (_write_screen)
-    Moose::out << oss.str();
-
-  if (_write_file)
-    _file_output_stream << oss.str();
+  write(oss.str());
 }
 
 void

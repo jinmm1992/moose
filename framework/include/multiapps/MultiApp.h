@@ -16,6 +16,7 @@
 
 #include "MooseApp.h"
 #include "MooseEnum.h"
+#include "SetupInterface.h"
 #include "Restartable.h"
 
 // libMesh includes
@@ -39,6 +40,7 @@ InputParameters validParams<MultiApp>();
  */
 class MultiApp :
   public MooseObject,
+  public SetupInterface,
   public Restartable
 {
 public:
@@ -90,11 +92,6 @@ public:
    * @param app The global app number you want to get the bounding box for
    */
   virtual MeshTools::BoundingBox getBoundingBox(unsigned int app);
-
-  /**
-   * @return When this MultiApp will be executed.
-   */
-  int executeOn() { return _execute_on; }
 
   /**
    * Get the FEProblem this MultiApp is part of.
@@ -206,6 +203,11 @@ public:
 
 protected:
   /**
+   * _must_ fill in _positions with the positions of the sub-aps
+   */
+  virtual void fillPositions();
+
+  /**
    * Helper function for creating an App instance.
    *
    * @param i The local app number to create.
@@ -276,9 +278,6 @@ protected:
 
   /// Pointers to each of the Apps
   std::vector<MooseApp *> _apps;
-
-  /// When this MultiApp will be executed
-  MooseEnum _execute_on;
 
   /// Relative bounding box inflation
   Real _inflation;

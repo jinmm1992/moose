@@ -58,14 +58,18 @@ public:
    * Timestep function
    * Runs at the beginning of each timestep and prints the timestep, time, and dt information
    */
-  virtual void timestepSetup();
+  //virtual void timestepSetup();
 
   /**
-   * Adds a outputting of nonlinear/linear residual printing to the base class output() method
+   * Customizes the order of output for the various components as well as adds additional
+   * output such as timestep information and nonlinear/linear residual information
    *
-   * @see petscOutput
+   * This method explicitly re-implements portions of AdvancedOutput::output, which is generally not
+   * recommended. This is done here to get the output ordering desired. If additional output types
+   * (e.g., elemental or nodal) are required in the future this calls will need to be explicitly added
+   * as well.
    */
-  virtual void output();
+  virtual void output(const OutputExecFlagType & type);
 
   /**
    * Creates the output file name
@@ -84,7 +88,23 @@ public:
    */
   static void petscSetupOutput();
 
+  /** Helper function function for stringstream formatting
+   * @see outputSimulationInformation()
+   */
+  static void insertNewline(std::stringstream &oss, std::streampos &begin, std::streampos &curr);
+
+  /// Width used for printing simulation information
+  static const unsigned int _field_width = 25;
+
+  /// Line length for printing simulation information
+  static const unsigned int _line_length = 100;
+
 protected:
+
+  /**
+   * Print the input file at the beginning of the simulation
+   */
+  virtual void outputInput();
 
   /**
    * Prints the aux scalar variables table to the screen
@@ -108,18 +128,33 @@ protected:
    */
   std::string outputNorm(Real old_norm, Real norm);
 
-  /** Helper function function for stringstream formatting
-   * @see outputSimulationInformation()
+  /**
+   * Prints the time step information for the screen output
    */
-  void insertNewline(std::stringstream &oss, std::streampos &begin, std::streampos &curr);
+  void writeTimestepInformation();
 
   /**
-   * Write the file stream to the file
-   * This helper function writes the _file_output_stream to the file and clears the
-   * stream, by default the file is appended.
-   * @param append Toggle for appending the file
+   * Write message to screen and/or file
+   * @param message The desired message
+   * @param indent True if multiapp indenting is desired
    */
-  void writeStream(bool append = true);
+  void write(std::string message, bool indent = true);
+
+  /**
+   * Apply indentation to newlines in the supplied stream
+   * @param message Reference to the message being changed
+   */
+  void indentMessage(std::string & message);
+
+/**
+   * Write the file stream to the file
+   * @param append Toggle for appending the file
+   *
+   * This helper function writes the _file_output_stream to the file and clears the
+   * stream, by default the file is appended. This does nothing if 'output_file' is
+   * false.
+   */
+  void writeStreamToFile(bool append = true);
 
   /**
    * Print the L2-norms for each variable
@@ -131,9 +166,6 @@ protected:
 
   /// The FormattedTable fit mode
   MooseEnum _fit_mode;
-
-  /// Toggle for controlling the use of color output
-  bool _use_color;
 
   /// Toggle for outputting time in time and dt in scientific notation
   bool _scientific_time;
@@ -188,16 +220,30 @@ protected:
   /// Number of significant digits
   unsigned int _precision;
 
-  /// Width used for printing simulation information
-  static const unsigned int _field_width = 25;
-
-  /// Line length for printing simulation information
-  static const unsigned int _line_length = 100;
-
 private:
+
+  /**
+   * Add a message to the output streams
+   * @param message The message to add to the output streams
+   *
+   * Any call to this method will write the supplied message to the screen and/or file,
+   * following the same restrictions as outputStep and outputInitial.
+   *
+   * Calls to this method should be made via OutputWarehouse::mooseConsole so that the
+   * output stream buffer is cleaned up correctly. Thus, it is a private method.
+   */
+  void mooseConsole(const std::string & message);
 
   /// State of the --timing command line argument from MooseApp
   bool _timing;
+
+  /// Level of indent to add to output
+  std::string _multiapp_indent;
+
+  /// Reference to cached messages from calls to _console
+  const std::ostringstream & _console_buffer;
+
+  friend class OutputWarehouse;
 };
 
 #endif /* CONSOLE_H */

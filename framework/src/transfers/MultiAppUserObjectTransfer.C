@@ -48,9 +48,15 @@ MultiAppUserObjectTransfer::MultiAppUserObjectTransfer(const std::string & name,
 }
 
 void
+MultiAppUserObjectTransfer::initialSetup()
+{
+  variableIntegrityCheck(_to_var_name);
+}
+
+void
 MultiAppUserObjectTransfer::execute()
 {
-  Moose::out << "Beginning MultiAppUserObjectTransfer " << _name << std::endl;
+  _console << "Beginning MultiAppUserObjectTransfer " << _name << std::endl;
 
   switch (_direction)
   {
@@ -64,9 +70,6 @@ MultiAppUserObjectTransfer::execute()
 
           // Loop over the master nodes and set the value of the variable
           System * to_sys = find_sys(_multi_app->appProblem(i)->es(), _to_var_name);
-
-          if (!to_sys)
-            mooseError("Cannot find variable "<<_to_var_name<<" for "<<_name<<" Transfer");
 
           unsigned int sys_num = to_sys->number();
           unsigned int var_num = to_sys->variable_number(_to_var_name);
@@ -162,7 +165,7 @@ MultiAppUserObjectTransfer::execute()
 
       unsigned int to_var_num = to_sys.variable_number(to_var.name());
 
-      Moose::out << "Transferring to: " << to_var.name() << std::endl;
+      _console << "Transferring to: " << to_var.name() << std::endl;
 
       // EquationSystems & to_es = to_sys.get_equation_systems();
 
@@ -248,5 +251,5 @@ MultiAppUserObjectTransfer::execute()
     }
   }
 
-  Moose::out << "Finished MultiAppUserObjectTransfer " << _name << std::endl;
+  _console << "Finished MultiAppUserObjectTransfer " << _name << std::endl;
 }

@@ -15,32 +15,33 @@
 #ifndef DAMPERWAREHOUSE_H
 #define DAMPERWAREHOUSE_H
 
+#include "Warehouse.h"
+
 #include <vector>
-#include <map>
-#include <set>
 
 class Damper;
 
 /**
  * Holds dampers and provides some services
  */
-class DamperWarehouse
+class DamperWarehouse : public Warehouse<Damper>
 {
 public:
   DamperWarehouse();
   virtual ~DamperWarehouse();
 
-  const std::vector<Damper *> & all() { return _dampers; }
-
   /**
    * Adds a damper
    * @param damper Damper being added
    */
-  void addDamper(Damper *damper);
+  void addDamper(MooseSharedPointer<Damper> & damper);
 
 protected:
-  /// The list of all dampers
-  std::vector<Damper *> _dampers;
+  /**
+   * We are using MooseSharedPointer to handle the cleanup of the pointers at the end of execution.
+   * This is necessary since several warehouses might be sharing a single instance of a MooseObject.
+   */
+  std::vector<MooseSharedPointer<Damper> > _all_ptrs;
 };
 
 #endif // DAMPERWAREHOUSE_H

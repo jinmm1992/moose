@@ -30,17 +30,18 @@ public:
   virtual void execute();
   virtual void threadJoin(const UserObject & uo);
 
-  const Node & getCrackFrontNode(const unsigned int node_index) const;
+  const Node * getCrackFrontNodePtr(const unsigned int node_index) const;
   const RealVectorValue & getCrackFrontTangent(const unsigned int node_index) const;
-  const RealVectorValue & getCrackFrontNormal() const;
   Real getCrackFrontForwardSegmentLength(const unsigned int node_index) const;
   Real getCrackFrontBackwardSegmentLength(const unsigned int node_index) const;
   const RealVectorValue & getCrackDirection(const unsigned int node_index) const;
+  unsigned int getNumCrackFrontNodes() const;
   bool treatAs2D() const {return _treat_as_2d;}
   RealVectorValue rotateToCrackFrontCoords(const RealVectorValue vector, const unsigned int node_index) const;
   ColumnMajorMatrix rotateToCrackFrontCoords(const SymmTensor tensor, const unsigned int node_index) const;
   ColumnMajorMatrix rotateToCrackFrontCoords(const ColumnMajorMatrix tensor, const unsigned int node_index) const;
   void calculateRThetaToCrackFront(const Point qp, const unsigned int node_index, Real & r, Real & theta) const;
+  bool isNodeOnIntersectingBoundary(const Node * const node) const;
 
 protected:
 
@@ -81,18 +82,21 @@ protected:
   RealVectorValue _crack_direction_vector_end_2;
   std::vector<BoundaryName> _crack_mouth_boundary_names;
   std::vector<BoundaryID> _crack_mouth_boundary_ids;
+  std::vector<BoundaryName> _intersecting_boundary_names;
+  std::vector<BoundaryID> _intersecting_boundary_ids;
   RealVectorValue _crack_mouth_coordinates;
   RealVectorValue _crack_plane_normal;
   bool _treat_as_2d;
+  bool _closed_loop;
   unsigned int _axis_2d;
 
-  void getCrackFrontNodes(std::set<unsigned int>& nodes);
-  void orderCrackFrontNodes(std::set<unsigned int>& nodes);
-  void orderEndNodes(std::vector<unsigned int> &end_nodes);
-  void pickLoopCrackEndNodes(std::vector<unsigned int> &end_nodes,
-                             std::set<unsigned int> &nodes,
-                             std::map<unsigned int, std::vector<unsigned int> > &node_to_line_elem_map,
-                             std::vector<std::vector<unsigned int> > &line_elems);
+  void getCrackFrontNodes(std::set<dof_id_type>& nodes);
+  void orderCrackFrontNodes(std::set<dof_id_type>& nodes);
+  void orderEndNodes(std::vector<dof_id_type> &end_nodes);
+  void pickLoopCrackEndNodes(std::vector<dof_id_type> &end_nodes,
+                             std::set<dof_id_type> &nodes,
+                             std::map<dof_id_type, std::vector<dof_id_type> > &node_to_line_elem_map,
+                             std::vector<std::vector<dof_id_type> > &line_elems);
   unsigned int maxNodeCoor(std::vector<Node *>& nodes, unsigned int dir0=0);
   void updateCrackFrontGeometry();
   void updateDataForCrackDirection();

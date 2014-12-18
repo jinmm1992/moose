@@ -13,10 +13,11 @@
 /****************************************************************/
 
 #include "Conversion.h"
-#include "MooseTypes.h"
 #include "MooseError.h"
+
 #include <map>
 #include <algorithm>
+
 #include "libmesh/string_to_enum.h"
 
 namespace Moose {
@@ -52,6 +53,7 @@ namespace Moose {
       quadrature_type_to_enum["MONOMIAL"] = QMONOMIAL;
       quadrature_type_to_enum["SIMPSON"]  = QSIMPSON;
       quadrature_type_to_enum["TRAP"]     = QTRAP;
+      quadrature_type_to_enum["GAUSS_LOBATTO"] = QGAUSS_LOBATTO;
     }
   }
 
@@ -110,7 +112,6 @@ namespace Moose {
 #endif
     }
   }
-
 
   template<>
   ExecFlagType stringToEnum(const std::string & s)
@@ -209,6 +210,15 @@ namespace Moose {
     return line_search_type_to_enum[upper];
   }
 
+  template<>
+  std::vector<ExecFlagType> vectorStringsToEnum<ExecFlagType>(const MultiMooseEnum & v)
+  {
+    std::vector<ExecFlagType> exec_flags(v.size());
+    for (unsigned int i=0; i<v.size(); ++i)
+      exec_flags[i] = stringToEnum<ExecFlagType>(v[i]);
+
+    return exec_flags;
+  }
 
   template<>
   std::string stringify(const SolveType & t)

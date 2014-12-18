@@ -16,6 +16,7 @@
 #define SOLUTIONHISTORY_H
 
 // MOOSE includes
+#include "BasicOutput.h"
 #include "FileOutput.h"
 
 // Forward declerations
@@ -29,8 +30,7 @@ InputParameters validParams<SolutionHistory>();
  *
  * @see Exodus
  */
-class SolutionHistory :
-  public FileOutput
+class SolutionHistory : public BasicOutput<FileOutput>
 {
 public:
 
@@ -45,33 +45,15 @@ public:
   SolutionHistory(const std::string & name, InputParameters & parameters);
 
   /**
-   * Class destructor
-   */
-  virtual ~SolutionHistory();
-
-  /**
    * Output the data to *.slh file
    */
-  virtual void output();
+  virtual void output(const OutputExecFlagType & type);
 
   /**
    * The filename for the output file
    * @return A string of output file including the extension
    */
   virtual std::string filename();
-
-protected:
-  //@{
-  /**
-   * Individual component output is not supported for solution history output
-   */
-  virtual void outputNodalVariables();
-  virtual void outputElementalVariables();
-  virtual void outputPostprocessors();
-  virtual void outputVectorPostprocessors();
-  virtual void outputScalarVariables();
-  //@}
-
 };
 
 #endif /* SOLUTIONHISTORY_H */

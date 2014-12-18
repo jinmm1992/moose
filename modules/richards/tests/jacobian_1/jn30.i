@@ -79,7 +79,6 @@
     variable = pressure
     unit_weight = '0 0 0'
     character = 1E12
-    mesh_adaptivity = false
     MyNameIsAndyWilkins = false
   [../]
 []
@@ -133,7 +132,6 @@
 
 [Outputs]
   file_base = jn30
-  output_initial = false
   exodus = false
   [./console]
     type = Console

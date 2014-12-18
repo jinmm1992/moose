@@ -33,6 +33,8 @@ public:
   MultiAppNearestNodeTransfer(const std::string & name, InputParameters parameters);
   virtual ~MultiAppNearestNodeTransfer() {}
 
+  virtual void initialSetup();
+
   virtual void execute();
 
 protected:
@@ -56,10 +58,10 @@ protected:
   bool _fixed_meshes;
 
   /// Used to cache nodes
-  std::map<unsigned int, Node *> _node_map;
+  std::map<dof_id_type, Node *> _node_map;
 
   /// Used to cache distances
-  std::map<unsigned int, Real> _distance_map;
+  std::map<dof_id_type, Real> _distance_map;
 };
 
 #endif /* MULTIAPPVARIABLEVALUESAMPLEPOSTPROCESSORTRANSFER_H */

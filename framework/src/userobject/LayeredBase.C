@@ -21,13 +21,13 @@ template<>
 InputParameters validParams<LayeredBase>()
 {
   InputParameters params = emptyInputParameters();
-  MooseEnum directions("x, y, z");
+  MooseEnum directions("x y z");
 
   params.addRequiredParam<MooseEnum>("direction", directions, "The direction of the layers.");
   params.addParam<unsigned int>("num_layers", "The number of layers.");
   params.addParam<std::vector<Real> >("bounds", "The 'bounding' positions of the layers i.e.: '0, 1.2, 3.7, 4.2' will mean 3 layers between those positions.");
 
-  MooseEnum sample_options("direct, interpolate, average", "direct");
+  MooseEnum sample_options("direct interpolate average", "direct");
   params.addParam<MooseEnum>("sample_type", sample_options, "How to sample the layers.  'direct' means get the value of the layer the point falls in directly (or average if that layer has no value).  'interpolate' does a linear interpolation between the two closest layers.  'average' averages the two closest layers.");
 
   params.addParam<unsigned int>("average_radius", 1, "When using 'average' sampling this is how the number of values both above and below the layer that will be averaged.");
@@ -246,13 +246,13 @@ LayeredBase::getLayer(Point p) const
 
     if (one_higher == _layer_bounds.end())
     {
-      return _layer_bounds.size() - 2; // Just return the last layer.  -2 because layers are "in-between" bounds
+      return static_cast<unsigned int>(_layer_bounds.size() - 2); // Just return the last layer.  -2 because layers are "in-between" bounds
     }
     else if (one_higher == _layer_bounds.begin())
       return 0; // Return the first layer
     else
       // The -1 is because the interval that we fall in is just _before_ the number that is bigger (which is what we found
-      return std::distance(_layer_bounds.begin(), one_higher-1);
+      return static_cast<unsigned int>(std::distance(_layer_bounds.begin(), one_higher-1));
   }
 }
 

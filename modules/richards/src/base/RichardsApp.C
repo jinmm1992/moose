@@ -12,6 +12,7 @@
 #include "RichardsDensityConstBulk.h"
 #include "RichardsDensityIdeal.h"
 #include "RichardsDensityMethane20degC.h"
+#include "RichardsDensityVDW.h"
 #include "RichardsRelPermMonomial.h"
 #include "RichardsRelPermPower.h"
 #include "RichardsRelPermVG.h"
@@ -24,6 +25,8 @@
 #include "RichardsSeff1RSC.h"
 #include "RichardsSeff2waterVG.h"
 #include "RichardsSeff2gasVG.h"
+#include "RichardsSeff2waterVGshifted.h"
+#include "RichardsSeff2gasVGshifted.h"
 #include "RichardsSeff2waterRSC.h"
 #include "RichardsSeff2gasRSC.h"
 #include "RichardsSat.h"
@@ -57,9 +60,6 @@
 #include "GradParsedFunction.h"
 #include "Grad2ParsedFunction.h"
 
-// Indicators
-#include "RichardsFluxJumpIndicator.h"
-
 // Postprocessors
 #include "RichardsMass.h"
 #include "RichardsPiecewiseLinearSinkFlux.h"
@@ -72,6 +72,7 @@
 #include "RichardsMassChange.h"
 #include "RichardsLumpedMassChange.h"
 #include "RichardsFlux.h"
+#include "RichardsFullyUpwindFlux.h"
 #include "RichardsPPenalty.h"
 
   // BoundaryConditions
@@ -86,6 +87,9 @@ template<>
 InputParameters validParams<RichardsApp>()
 {
   InputParameters params = validParams<MooseApp>();
+  params.set<bool>("use_legacy_uo_initialization") = true;
+  params.set<bool>("use_legacy_uo_aux_computation") = false;
+
   return params;
 }
 
@@ -119,6 +123,7 @@ RichardsApp::registerObjects(Factory & factory)
   registerUserObject(RichardsDensityConstBulk);
   registerUserObject(RichardsDensityIdeal);
   registerUserObject(RichardsDensityMethane20degC);
+  registerUserObject(RichardsDensityVDW);
   registerUserObject(RichardsRelPermMonomial);
   registerUserObject(RichardsRelPermPower);
   registerUserObject(RichardsRelPermVG);
@@ -131,6 +136,8 @@ RichardsApp::registerObjects(Factory & factory)
   registerUserObject(RichardsSeff1RSC);
   registerUserObject(RichardsSeff2waterVG);
   registerUserObject(RichardsSeff2gasVG);
+  registerUserObject(RichardsSeff2waterVGshifted);
+  registerUserObject(RichardsSeff2gasVGshifted);
   registerUserObject(RichardsSeff2waterRSC);
   registerUserObject(RichardsSeff2gasRSC);
   registerUserObject(RichardsSat);
@@ -164,9 +171,6 @@ RichardsApp::registerObjects(Factory & factory)
   registerFunction(GradParsedFunction);
   registerFunction(Grad2ParsedFunction);
 
-  // Indicators
-  registerIndicator(RichardsFluxJumpIndicator);
-
   // Postprocessors
   registerPostprocessor(RichardsMass);
   registerPostprocessor(RichardsPiecewiseLinearSinkFlux);
@@ -179,6 +183,7 @@ RichardsApp::registerObjects(Factory & factory)
   registerKernel(RichardsMassChange);
   registerKernel(RichardsLumpedMassChange);
   registerKernel(RichardsFlux);
+  registerKernel(RichardsFullyUpwindFlux);
   registerKernel(RichardsPPenalty);
 
   // BoundaryConditions

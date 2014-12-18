@@ -48,6 +48,8 @@ class MooseMesh;
 class NonlinearSystem;
 class RandomInterface;
 class RandomData;
+class MeshChangedInterface;
+class MultiMooseEnum;
 
 template<>
 InputParameters validParams<FEProblem>();
@@ -108,7 +110,7 @@ public:
   virtual MooseMesh & mesh() { return _mesh; }
 
   virtual Moose::CoordinateSystemType getCoordSystem(SubdomainID sid);
-  virtual void setCoordSystem(const std::vector<SubdomainName> & blocks, const std::vector<MooseEnum> & coord_sys);
+  virtual void setCoordSystem(const std::vector<SubdomainName> & blocks, const MultiMooseEnum & coord_sys);
 
   /**
    * Set the coupling between variables
@@ -146,15 +148,15 @@ public:
    * @param div_threshold  Maximum value of residual before triggering divergence check
    */
   virtual MooseNonlinearConvergenceReason checkNonlinearConvergence(std::string &msg,
-                                                                    const int it,
+                                                                    const PetscInt it,
                                                                     const Real xnorm,
                                                                     const Real snorm,
                                                                     const Real fnorm,
                                                                     const Real rtol,
                                                                     const Real stol,
                                                                     const Real abstol,
-                                                                    const int nfuncs,
-                                                                    const int max_funcs,
+                                                                    const PetscInt nfuncs,
+                                                                    const PetscInt max_funcs,
                                                                     const Real ref_resid,
                                                                     const Real div_threshold);
 
@@ -169,15 +171,15 @@ public:
    * @param maxits         Maximum number of linear iterations allowed
    */
   virtual MooseLinearConvergenceReason checkLinearConvergence(std::string &msg,
-                                                              const int n,
+                                                              const PetscInt n,
                                                               const Real rnorm,
                                                               const Real rtol,
                                                               const Real atol,
                                                               const Real dtol,
-                                                              const int maxits);
+                                                              const PetscInt maxits);
 
 #ifdef LIBMESH_HAVE_PETSC
-  void storePetscOptions(const std::vector<MooseEnum> & petsc_options,
+  void storePetscOptions(const MultiMooseEnum & petsc_options,
                          const std::vector<std::string> & petsc_options_inames,
                          const std::vector<std::string> & petsc_options_values);
 #endif
@@ -217,8 +219,7 @@ public:
    */
   virtual void clearActiveElementalMooseVariables(THREAD_ID tid);
 
-  virtual void createQRules(QuadratureType type, Order order);
-  virtual Order getQuadratureOrder() { return _quadrature_order; }
+  virtual void createQRules(QuadratureType type, Order order, Order volume_order=INVALID_ORDER, Order face_order=INVALID_ORDER);
 
   /**
    * @return The maximum number of quadrature points in use on any element in this problem.
@@ -242,7 +243,7 @@ public:
 
   virtual void prepareAssembly(THREAD_ID tid);
 
-  virtual void addGhostedElem(unsigned int elem_id);
+  virtual void addGhostedElem(dof_id_type elem_id);
   virtual void addGhostedBoundary(BoundaryID boundary_id);
   virtual void ghostGhostedBoundaries();
 
@@ -253,7 +254,7 @@ public:
   virtual void reinitElemFace(const Elem * elem, unsigned int side, BoundaryID bnd_id, THREAD_ID tid);
   virtual void reinitNode(const Node * node, THREAD_ID tid);
   virtual void reinitNodeFace(const Node * node, BoundaryID bnd_id, THREAD_ID tid);
-  virtual void reinitNodes(const std::vector<unsigned int> & nodes, THREAD_ID tid);
+  virtual void reinitNodes(const std::vector<dof_id_type> & nodes, THREAD_ID tid);
   virtual void reinitNeighbor(const Elem * elem, unsigned int side, THREAD_ID tid);
   virtual void reinitNeighborPhys(const Elem * neighbor, unsigned int neighbor_side, const std::vector<Point> & physical_points, THREAD_ID tid);
   virtual void reinitNodeNeighbor(const Node * node, THREAD_ID tid);
@@ -306,8 +307,12 @@ public:
   virtual void addPredictor(const std::string & type, const std::string & name, InputParameters parameters);
 
   virtual void copySolutionsBackwards();
-  // Update backward time solution vectors
-  virtual void copyOldSolutions();
+
+  /**
+   * Advance all of the state holding vectors / datastructures so that we can move to the next timestep.
+   */
+  virtual void advanceState();
+
   virtual void restoreSolutions();
 
   virtual const std::vector<MooseObject *> & getObjectsByName(const std::string & name, THREAD_ID tid);
@@ -320,7 +325,7 @@ public:
   // NL /////
   NonlinearSystem & getNonlinearSystem() { return _nl; }
   void addVariable(const std::string & var_name, const FEType & type, Real scale_factor, const std::set< SubdomainID > * const active_subdomains = NULL);
-  void addScalarVariable(const std::string & var_name, Order order, Real scale_factor = 1.);
+  void addScalarVariable(const std::string & var_name, Order order, Real scale_factor = 1., const std::set< SubdomainID > * const active_subdomains = NULL);
   void addKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters);
   void addScalarKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters);
   void addBoundaryCondition(const std::string & bc_name, const std::string & name, InputParameters parameters);
@@ -329,7 +334,7 @@ public:
 
   // Aux /////
   void addAuxVariable(const std::string & var_name, const FEType & type, const std::set< SubdomainID > * const active_subdomains = NULL);
-  void addAuxScalarVariable(const std::string & var_name, Order order, Real scale_factor = 1.);
+  void addAuxScalarVariable(const std::string & var_name, Order order, Real scale_factor = 1., const std::set< SubdomainID > * const active_subdomains = NULL);
   void addAuxKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters);
   void addAuxScalarKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters);
 
@@ -360,7 +365,6 @@ public:
   virtual const std::vector<Material*> & getFaceMaterials(SubdomainID block_id, THREAD_ID tid);
   virtual const std::vector<Material*> & getBndMaterials(BoundaryID block_id, THREAD_ID tid);
   virtual const std::vector<Material*> & getNeighborMaterials(SubdomainID block_id, THREAD_ID tid);
-  virtual void updateMaterials();
 
   /**
    * Add the MooseVariables that the current materials depend on to the dependency list.
@@ -451,6 +455,11 @@ public:
    * Get a reference to the PostprocessorWarehouse ExecStore object
    */
   ExecStore<PostprocessorWarehouse> & getPostprocessorWarehouse();
+
+  /**
+   * Returns whether or not the current simulation has any multiapps
+   */
+  bool hasMultiApps() const { return _has_multiapps; }
 
   /**
    * Check existence of the VectorPostprocessor.
@@ -558,7 +567,30 @@ public:
   virtual void computeResidual(NonlinearImplicitSystem & sys, const NumericVector<Number> & soln, NumericVector<Number> & residual );
   virtual void computeResidualType(const NumericVector<Number> & soln, NumericVector<Number> & residual, Moose::KernelType type = Moose::KT_ALL);
   virtual void computeJacobian(NonlinearImplicitSystem & sys, const NumericVector<Number> & soln, SparseMatrix<Number> &  jacobian);
-  virtual void computeJacobianBlock(SparseMatrix<Number> &  jacobian, libMesh::System & precond_system, unsigned int ivar, unsigned int jvar);
+
+  /**
+   * Computes several Jacobian blocks simultaneously, summing their contributions into smaller preconditioning matrices.
+   *
+   * Used by Physics-based preconditioning
+   *
+   * @param blocks The blocks to fill in (JacobianBlock is defined in ComputeJacobianBlocksThread)
+   */
+  virtual void computeJacobianBlocks(std::vector<JacobianBlock *> & blocks);
+
+  /**
+   * Really not a good idea to use this.
+   *
+   * It computes just one block of the Jacobian into a smaller matrix.  Calling this in a loop is EXTREMELY ineffecient!
+   * Try to use computeJacobianBlocks() instead!
+   *
+   * @param jacobian The matrix you want to fill
+   * @param precond_system The libMesh::system of the preconditioning system
+   * @param ivar the block-row of the Jacobian
+   * @param jvar the block-column of the Jacobian
+   *
+   */
+  virtual void computeJacobianBlock(SparseMatrix<Number> & jacobian, libMesh::System & precond_system, unsigned int ivar, unsigned int jvar);
+
   virtual Real computeDamping(const NumericVector<Number>& soln, const NumericVector<Number>& update);
 
   /**
@@ -629,6 +661,8 @@ public:
 
   virtual void updateGeomSearch(GeometricSearchData::GeometricSearchType type = GeometricSearchData::ALL);
 
+  virtual void possiblyRebuildGeomSearchPatches();
+
   virtual GeometricSearchData & geomSearchData() { return _geometric_search_data; }
 
   /**
@@ -659,10 +693,14 @@ public:
    */
   std::set<std::string> & getRecoverableData() { return _recoverable_data; }
 
-  /** Return a reference to the material property storage
+  ///@{
+  /**
+   * Return a reference to the material property storage
    * @return A const reference to the material property storage
    */
   const MaterialPropertyStorage & getMaterialPropertyStorage() { return _material_props; }
+  const MaterialPropertyStorage & getBndMaterialPropertyStorage() { return _bnd_material_props; }
+  ///@}
 
   /**
    * Get the solver parameters
@@ -676,7 +714,12 @@ public:
 #endif //LIBMESH_ENABLE_AMR
   virtual void meshChanged();
 
-  void printMaterialMap();
+  /**
+   * Register an object that derives from MeshChangedInterface
+   * to be notified when the mesh changes.
+   */
+  void notifyWhenMeshChanges(MeshChangedInterface * mci);
+
   void checkProblemIntegrity();
 
   void serializeSolution();
@@ -694,6 +737,10 @@ public:
   void registerRandomInterface(RandomInterface & random_interface, const std::string & name);
 
   void setKernelCoverageCheck(bool flag) { _kernel_coverage_check = flag; }
+
+  bool & legacyUoAuxComputation() { return _use_legacy_uo_aux_computation; }
+
+  bool & legacyUoInitialization() { return _use_legacy_uo_initialization; }
 
   /**
    * Updates the active boundary id
@@ -719,11 +766,6 @@ public:
    * Calls parentOutputPositionChanged() on all sub apps.
    */
   void parentOutputPositionChanged();
-
-  /**
-   * Enable printing of top residuals
-   */
-  void setDebugTopResiduals(unsigned int n) { _dbg_top_residuals = n; }
 
   ///@{
   /**
@@ -766,6 +808,20 @@ public:
    */
   MaterialData * getBoundaryMaterialData(THREAD_ID tid) { return _bnd_material_data[tid]; }
 
+  /**
+   * Returns a short description of the active preconditioner
+   */
+  const std::string & getPreconditionerDescription() const { return _pc_description; }
+
+  /**
+   * Will return True if the user wants to get an error when
+   * a nonzero is reallocated in the Jacobian by PETSc
+   */
+  bool errorOnJacobianNonzeroReallocation() { return _error_on_jacobian_nonzero_reallocation; }
+
+  void setErrorOnJacobianNonzeroReallocation(bool state) { _error_on_jacobian_nonzero_reallocation = state; }
+
+
 
 protected:
   /// Data names that will only be read from the restart file during RECOVERY
@@ -804,12 +860,10 @@ protected:
   // Dimension of the subspace spanned by the vectors with a given prefix
   std::map<std::string,unsigned int> _subspace_dim;
 
-  // quadrature
-  Order _quadrature_order;                              ///< Quadrature order required by all variables to integrated over them.
   std::vector<Assembly *> _assembly;
 
   /// functions
-  std::vector<std::map<std::string, Function *> > _functions;
+  std::vector<std::map<std::string, MooseSharedPointer<Function> > > _functions;
 
   /// Initial condition warehouses (one for each thread)
   std::vector<InitialConditionWarehouse> _ics;
@@ -856,13 +910,16 @@ protected:
   /// A map of objects that consume random numbers
   std::map<std::string, RandomData *> _random_data_objects;
 
-  // Cache for calculating materials on side
+  /// Cache for calculating materials on side
   std::vector<LIBMESH_BEST_UNORDERED_MAP<SubdomainID, bool> > _block_mat_side_cache;
 
-  // Cache for calculating materials on side
+  /// Cache for calculating materials on side
   std::vector<LIBMESH_BEST_UNORDERED_MAP<BoundaryID, bool> > _bnd_mat_side_cache;
 
-  void computeUserObjectsInternal(std::vector<UserObjectWarehouse> & user_objects, UserObjectWarehouse::GROUP group);
+  /// Objects to be notified when the mesh changes
+  std::vector<MeshChangedInterface *> _notify_when_mesh_changes;
+
+  void computeUserObjectsInternal(ExecFlagType type, UserObjectWarehouse::GROUP group);
 
 protected:
   void checkUserObjects();
@@ -896,11 +953,11 @@ protected:
   /// Whether or not this system has any Constraints.
   bool _has_constraints;
 
+  /// Whether or not this systen has any multiapps
+  bool _has_multiapps;
+
   /// Whether nor not stateful materials have been initialized
   bool _has_initialized_stateful;
-
-  /// Flag for print top residuals
-  bool _dbg_top_residuals;
 
   /// Object responsible for restart (read/write)
   Resurrector * _resurrector;
@@ -918,11 +975,19 @@ protected:
   /// Maximum number of quadrature points used in the problem
   unsigned int _max_qps;
 
+  /// Preconditioner description
+  std::string _pc_description;
+
 public:
   /// number of instances of FEProblem (to distinguish Systems when coupling problems together)
   static unsigned int _n;
 
 private:
+  bool _use_legacy_uo_aux_computation;
+  bool _use_legacy_uo_initialization;
+
+  bool _error_on_jacobian_nonzero_reallocation;
+
   /**
    * NOTE: This is an internal function meant for MOOSE use only!
    *

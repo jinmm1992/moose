@@ -49,6 +49,7 @@
     formulation = penalty
 #    model = glued
     tangential_tolerance = 1e-3
+    tension_release = -1
   [../]
 []
 
@@ -133,8 +134,8 @@
   line_search = 'none'
 
 
-  nl_rel_tol = 1e-5
-  nl_abs_tol = 1e-6
+  nl_rel_tol = 1e-9
+  nl_abs_tol = 1e-9
 
   l_max_its = 100
   nl_max_its = 10

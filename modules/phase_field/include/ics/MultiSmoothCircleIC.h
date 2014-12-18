@@ -2,7 +2,7 @@
 #define MULTISMOOTHCIRCLEIC_H
 
 #include "Kernel.h"
-#include "SmoothCircleIC.h"
+#include "SmoothCircleBaseIC.h"
 
 // System includes
 #include <string>
@@ -17,7 +17,7 @@ InputParameters validParams<MultiSmoothCircleIC>();
  * MultismoothCircleIC creates multiple SmoothCircles (number = numbub) that are randomly
  * positioned around the domain, with a minimum spacing equal to bubspac
  **/
-class MultiSmoothCircleIC : public SmoothCircleIC
+class MultiSmoothCircleIC : public SmoothCircleBaseIC
 {
 public:
   /**
@@ -28,25 +28,27 @@ public:
    * @param var_name The variable this InitialCondtion is supposed to provide values for.
    */
   MultiSmoothCircleIC(const std::string & name,
-                         InputParameters parameters);
+                      InputParameters parameters);
 
   virtual void initialSetup();
 
-  virtual Real value(const Point & p);
-  virtual RealGradient gradient(const Point & p);
+  virtual void computeCircleRadii();
+
+  virtual void computeCircleCenters();
 
 protected:
+
   unsigned int _numbub;
   Real _bubspac;
-  Real _Lx;
-  Real _Ly;
-  Real _Lz;
 
-  unsigned int _rnd_seed, _numtries;
+  unsigned int _numtries;
+  Real _radius;
   Real _radius_variation;
+  MooseEnum _radius_variation_type;
 
-  std::vector<Point> _bubcent;
-  std::vector<Real> _bubradi;
+  Point _bottom_left;
+  Point _top_right;
+  Point _range;
 };
 
 #endif //MULTISMOOTHCIRCLEIC_H

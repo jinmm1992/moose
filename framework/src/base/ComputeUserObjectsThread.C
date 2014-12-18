@@ -188,6 +188,7 @@ ComputeUserObjectsThread::onBoundary(const Elem *elem, unsigned int side, Bounda
   {
     _fe_problem.reinitElemFace(elem, side, bnd_id, _tid);
     _fe_problem.reinitMaterialsFace(_subdomain, _tid);
+    _fe_problem.reinitMaterialsBoundary(bnd_id, _tid);
 
     for (std::vector<SideUserObject *>::const_iterator side_UserObject_it = _user_objects[_tid].sideUserObjects(bnd_id, _group).begin();
          side_UserObject_it != _user_objects[_tid].sideUserObjects(bnd_id, _group).end();
@@ -213,8 +214,9 @@ ComputeUserObjectsThread::onInternalSide(const Elem *elem, unsigned int side)
   const Elem * neighbor = elem->neighbor(side);
 
   // Get the global id of the element and the neighbor
-  const unsigned int elem_id = elem->id();
-  const unsigned int neighbor_id = neighbor->id();
+  const dof_id_type
+    elem_id = elem->id(),
+    neighbor_id = neighbor->id();
 
   // Only perform execute if there are objects
   if (global_uo.size() > 0 || block_uo.size() > 0)

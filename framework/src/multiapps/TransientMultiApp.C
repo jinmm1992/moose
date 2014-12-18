@@ -136,7 +136,7 @@ TransientMultiApp::solveStep(Real dt, Real target_time, bool auto_advance)
 
   _auto_advance = auto_advance;
 
-  Moose::out << "Solving MultiApp " << _name << std::endl;
+  _console << "Solving MultiApp " << _name << std::endl;
 
 // "target_time" must always be in global time
   target_time += _app.getGlobalTimeOffset();
@@ -188,9 +188,8 @@ TransientMultiApp::solveStep(Real dt, Real target_time, bool auto_advance)
         _transferred_dofs = aldit._all_dof_indices;
       }
 
-      if (_output_sub_cycles)
-        output_warehouse.allowOutput(true);
-      else
+      // Disable output for sub cycling
+      if (!_output_sub_cycles)
         output_warehouse.allowOutput(false);
 
       ex->setTargetTime(target_time-app_time_offset);
@@ -265,15 +264,15 @@ TransientMultiApp::solveStep(Real dt, Real target_time, bool auto_advance)
         Real solution_change_norm = ex->getSolutionChangeNorm();
 
         if (_detect_steady_state)
-          Moose::out << "Solution change norm: " << solution_change_norm << std::endl;
+          _console << "Solution change norm: " << solution_change_norm << std::endl;
 
         if (converged && _detect_steady_state && solution_change_norm < _steady_state_tol)
         {
-          Moose::out << "Detected Steady State!  Fast-forwarding to " << target_time << std::endl;
+          _console << "Detected Steady State!  Fast-forwarding to " << target_time << std::endl;
 
           at_steady = true;
 
-         // Indicate that the next output call (occurs in ex->endStep()) should output, regarless of intervals etc...
+          // Indicate that the next output call (occurs in ex->endStep()) should output, regardless of intervals etc...
           output_warehouse.forceOutput();
 
           // Clean up the end
@@ -283,23 +282,19 @@ TransientMultiApp::solveStep(Real dt, Real target_time, bool auto_advance)
           ex->endStep();
       }
 
-      // If we were looking for a steady state, but didn't reach one, we still need to output one more time
+      // If we were looking for a steady state, but didn't reach one, we still need to output one more time, regardless of interval
       if (!at_steady)
-      {
-        output_warehouse.forceOutput();
-        output_warehouse.outputStep();
-     }
+        output_warehouse.outputStep(OUTPUT_FORCED);
 
-    }
+    } // sub_cycling
     else if (_tolerate_failure)
     {
       ex->takeStep(dt);
-      output_warehouse.forceOutput();
       ex->endStep(target_time-app_time_offset);
     }
     else
     {
-      Moose::out << "Solving Normal Step!" << std::endl;
+      _console << "Solving Normal Step!" << std::endl;
       if (auto_advance)
         if (_first != true)
           ex->incrementStepOrReject();
@@ -319,7 +314,7 @@ TransientMultiApp::solveStep(Real dt, Real target_time, bool auto_advance)
 
           if (_catch_up)
           {
-            Moose::out << "Starting Catch Up!" << std::endl;
+            _console << "Starting Catch Up!" << std::endl;
 
             bool caught_up = false;
 
@@ -339,8 +334,7 @@ TransientMultiApp::solveStep(Real dt, Real target_time, bool auto_advance)
               {
                 if (ex->getTime() + app_time_offset + ex->timestepTol()*std::abs(ex->getTime()) >= target_time)
                 {
-                  output_warehouse.forceOutput();
-                  output_warehouse.outputStep();
+                  output_warehouse.outputStep(OUTPUT_FORCED);
                   caught_up = true;
                 }
               }
@@ -355,11 +349,14 @@ TransientMultiApp::solveStep(Real dt, Real target_time, bool auto_advance)
             if (!caught_up)
               mooseError(_name << " Failed to catch up!\n");
 
-            output_warehouse.allowOutput(true);
-           }
+          }
         }
       }
     }
+
+    // Re-enable all output (it may of been disabled by sub-cycling)
+    output_warehouse.allowOutput(true);
+
   }
 
   _first = false;
@@ -369,7 +366,7 @@ TransientMultiApp::solveStep(Real dt, Real target_time, bool auto_advance)
 
   _transferred_vars.clear();
 
-  Moose::out << "Finished Solving MultiApp " << _name << std::endl;
+  _console << "Finished Solving MultiApp " << _name << std::endl;
 }
 
 void
@@ -436,7 +433,11 @@ TransientMultiApp::resetApp(unsigned int global_app, Real /*time*/)  // FIXME: N
 
     MPI_Comm swapped = Moose::swapLibMeshComm(_my_comm);
 
-    setupApp(local_app, time, false);
+    // Setup the app, disable the output so that the initial condition does not output
+    // When an app is reset the initial condition was effectively already output before reset
+    _apps[local_app]->getOutputWarehouse().allowOutput(false);
+    setupApp(local_app, time);
+    _apps[local_app]->getOutputWarehouse().allowOutput(true);
 
     // Swap back
     Moose::swapLibMeshComm(swapped);
@@ -444,7 +445,7 @@ TransientMultiApp::resetApp(unsigned int global_app, Real /*time*/)  // FIXME: N
 }
 
 void
-TransientMultiApp::setupApp(unsigned int i, Real /*time*/, bool output_initial)  // FIXME: Should we be passing time?
+TransientMultiApp::setupApp(unsigned int i, Real /*time*/)  // FIXME: Should we be passing time?
 {
   MooseApp * app = _apps[i];
   Transient * ex = dynamic_cast<Transient *>(app->getExecutioner());
@@ -453,20 +454,13 @@ TransientMultiApp::setupApp(unsigned int i, Real /*time*/, bool output_initial) 
 
   // Get the FEProblem and OutputWarehouse for the current MultiApp
   FEProblem * problem = appProblem(_first_local_app + i);
-  OutputWarehouse & output_warehouse = _apps[i]->getOutputWarehouse();
-
-  // Disable output if the initial condition is not desired (required by resetApp)
-  if (!output_initial)
-    output_warehouse.allowOutput(false);
+  OutputWarehouse & output_warehouse = app->getOutputWarehouse();
 
   // Update the file numbers for the outputs from the parent application
   output_warehouse.setFileNumbers(_app.getOutputFileNumbers());
 
   // Call initialization method of Executioner (Note, this preforms the output of the initial time step, if desired)
   ex->init();
-
-  // Enable output after setup
-  output_warehouse.allowOutput(true);
 
   if (_interpolate_transfers)
   {
@@ -481,9 +475,6 @@ TransientMultiApp::setupApp(unsigned int i, Real /*time*/, bool output_initial) 
   }
 
   ex->preExecute();
-  problem->copyOldSolutions();
+  problem->advanceState();
   _transient_executioners[i] = ex;
-
-  if (_detect_steady_state || _tolerate_failure)
-    _apps[i]->getOutputWarehouse().allowOutput(false);
 }

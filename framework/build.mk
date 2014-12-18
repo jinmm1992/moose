@@ -24,10 +24,10 @@ endif
 # Instead of using Make.common, use libmesh-config to get any libmesh
 # make variables we might need.  Be sure to pass METHOD along to libmesh-config
 # so that it can use the right one!
-libmesh_CXX      := $(shell METHOD=$(METHOD) $(libmesh_config) --cxx)
-libmesh_CC       := $(shell METHOD=$(METHOD) $(libmesh_config) --cc)
-libmesh_F77      := $(shell METHOD=$(METHOD) $(libmesh_config) --fc)
-libmesh_F90      := $(shell METHOD=$(METHOD) $(libmesh_config) --fc)
+libmesh_CXX      ?= $(shell METHOD=$(METHOD) $(libmesh_config) --cxx)
+libmesh_CC       ?= $(shell METHOD=$(METHOD) $(libmesh_config) --cc)
+libmesh_F77      ?= $(shell METHOD=$(METHOD) $(libmesh_config) --fc)
+libmesh_F90      ?= $(shell METHOD=$(METHOD) $(libmesh_config) --fc)
 libmesh_INCLUDE  := $(shell METHOD=$(METHOD) $(libmesh_config) --include)
 libmesh_CPPFLAGS := $(shell METHOD=$(METHOD) $(libmesh_config) --cppflags)
 libmesh_CXXFLAGS := $(shell METHOD=$(METHOD) $(libmesh_config) --cxxflags)
@@ -69,12 +69,6 @@ PCH_DEP=
 ifeq ($(MOOSE_PRECOMPILED), true)
   ifneq (,$(filter $(cxx_compiler), g++))
 	  PRECOMPILED = true
-  endif
-endif
-
-ifneq (,$(filter $(cxx_compiler), clang++))
-  ifneq (,$(findstring darwin,$(libmesh_HOST)))
-	libmesh_CXXFLAGS += -mmacosx-version-min=10.7
   endif
 endif
 
@@ -206,7 +200,7 @@ mpif77_command := $(libmesh_F77)
 # If $(libmesh_f77) is an mpiXXX compiler script, use -show
 # to determine the base compiler
 ifneq (,$(findstring mpi,$(mpif77_command)))
-	mpif77_command := $(shell $(libmesh_F77) -show)
+	mpif77_command := $(shell $(libmesh_F77) -show | cut -f1 -d' ')
 endif
 
 # Set certain flags based on compiler

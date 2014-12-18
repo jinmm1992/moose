@@ -35,8 +35,8 @@ void extraSendList(std::vector<dof_id_type> & send_list, void * context)
 
 /// Free function used for a libMesh callback
 void extraSparsity(SparsityPattern::Graph & sparsity,
-                   std::vector<unsigned int> & n_nz,
-                   std::vector<unsigned int> & n_oz,
+                   std::vector<dof_id_type> & n_nz,
+                   std::vector<dof_id_type> & n_oz,
                    void * context)
 {
   SystemBase * sys = static_cast<SystemBase *>(context);
@@ -237,10 +237,10 @@ SystemBase::prepareNeighbor(THREAD_ID tid)
 void
 SystemBase::reinitElem(const Elem * /*elem*/, THREAD_ID tid)
 {
-  const std::set<MooseVariable *> & active_elemental_moose_variables = _subproblem.getActiveElementalMooseVariables(tid);
 
   if (_subproblem.hasActiveElementalMooseVariables(tid))
   {
+    const std::set<MooseVariable *> & active_elemental_moose_variables = _subproblem.getActiveElementalMooseVariables(tid);
     for (std::set<MooseVariable *>::iterator it = active_elemental_moose_variables.begin();
         it != active_elemental_moose_variables.end();
         ++it)

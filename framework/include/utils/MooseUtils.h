@@ -20,8 +20,6 @@
 #include <sstream>
 #include <algorithm>
 
-#include "XTermConstants.h"
-
 // libMesh includes
 #include "libmesh/parallel.h"
 
@@ -73,9 +71,19 @@ namespace MooseUtils
    * Function tests if the supplied filename as the desired extension
    * @param filename The filename to test the extension
    * @param ext The extension to test for (do not include the .)
+   * @param strip_exodus_ext When true, this function ignores -s* from the end of the extension
    * @return True if the filename has the supplied extension
    */
-  bool hasExtension(const std::string & filename, std::string ext);
+  bool hasExtension(const std::string & filename, std::string ext, bool strip_exodus_ext = false);
+
+  /**
+   * Function for splitting path and filename
+   * @param full_name A complete filename and path
+   * @param A std::pair<std::string, std::string> containing the path and filename
+   *
+   * If the supplied filename does not contain a path, it returns "." as the path
+   */
+  std::pair<std::string, std::string> splitFileName(std::string full_file);
 
   /**
    * This routine is a simple helper function for searching a map by values instead of keys
@@ -90,29 +98,95 @@ namespace MooseUtils
   }
 
   /**
-   * Returns a character string to produce a specific color in terminals supporting
-   * color. The list of color constants is available in XTermConstants.h
-   * @param color (from XTermConstants.h)
-   * @param text The output to be converted to text and colored
-   * @param use_color A convenience flag using or not using color (see src/outputs/Console.C)
+   * Function to check whether two variables are equal within an absolute tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The tolerance to be used
+   * @return true if var1 and var2 are equal within tol
    */
-  template <typename T>
-  std::string
-  colorText(std::string color, T text, bool use_color = true)
-  {
-    // Define a stream to output
-    std::ostringstream oss;
-    oss << std::scientific;
+  bool absoluteFuzzyEqual(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
 
-    // Output the value to the stream
-    if (use_color)
-      oss << color << text << COLOR_DEFAULT;
-    else
-      oss << text;
+  /**
+   * Function to check whether a variable is greater than or equal to another variable within an absolute tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The tolerance to be used
+   * @return true if var1 > var2 or var1 == var2 within tol
+   */
+  bool absoluteFuzzyGreaterEqual(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
 
-    // Return string
-    return oss.str();
-  }
+  /**
+   * Function to check whether a variable is greater than another variable within an absolute tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The tolerance to be used
+   * @return true if var1 > var2 and var1 != var2 within tol
+   */
+  bool absoluteFuzzyGreaterThan(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
+
+  /**
+   * Function to check whether a variable is less than or equal to another variable within an absolute tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The tolerance to be used
+   * @return true if var1 < var2 or var1 == var2 within tol
+   */
+  bool absoluteFuzzyLessEqual(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
+
+  /**
+   * Function to check whether a variable is less than another variable within an absolute tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The tolerance to be used
+   * @return true if var1 < var2 and var1 != var2 within tol
+   */
+  bool absoluteFuzzyLessThan(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
+
+  /**
+   * Function to check whether two variables are equal within a relative tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The relative tolerance to be used
+   * @return true if var1 and var2 are equal within relative tol
+   */
+  bool relativeFuzzyEqual(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
+
+  /**
+   * Function to check whether a variable is greater than or equal to another variable within a relative tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The tolerance to be used
+   * @return true if var1 > var2 or var1 == var2 within relative tol
+   */
+  bool relativeFuzzyGreaterEqual(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
+
+  /**
+   * Function to check whether a variable is greater than another variable within a relative tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The tolerance to be used
+   * @return true if var1 > var2 and var1 != var2 within relative tol
+   */
+  bool relativeFuzzyGreaterThan(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
+
+  /**
+   * Function to check whether a variable is less than or equal to another variable within a relative tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The tolerance to be used
+   * @return true if var1 < var2 or var1 == var2 within relative tol
+   */
+  bool relativeFuzzyLessEqual(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
+
+  /**
+   * Function to check whether a variable is less than another variable within a relative tolerance
+   * @param var1 The first variable to be checked
+   * @param var2 The second variable to be checked
+   * @param tol The tolerance to be used
+   * @return true if var1 < var2 and var1 != var2 within relative tol
+   */
+  bool relativeFuzzyLessThan(const libMesh::Real & var1, const libMesh::Real & var2, const libMesh::Real & tol = libMesh::TOLERANCE*libMesh::TOLERANCE);
+
 }
 
 #endif //MOOSEUTILS_H

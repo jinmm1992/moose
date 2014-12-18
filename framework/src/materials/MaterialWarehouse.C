@@ -19,10 +19,8 @@
 
 #include <fstream>
 
-// FIXME: !
-#define unlikely(a) a
-
-MaterialWarehouse::MaterialWarehouse()
+MaterialWarehouse::MaterialWarehouse() :
+    Warehouse<Material>()
 {
   _master_list.reserve(3);
   _master_list.push_back(&_active_materials);
@@ -30,8 +28,10 @@ MaterialWarehouse::MaterialWarehouse()
   _master_list.push_back(&_active_neighbor_materials);
 }
 
-MaterialWarehouse::MaterialWarehouse(const MaterialWarehouse &rhs)
+MaterialWarehouse::MaterialWarehouse(const MaterialWarehouse &rhs) :
+    Warehouse<Material>()
 {
+  _all_objects = rhs._all_objects;
   _active_materials = rhs._active_materials;
   _active_face_materials = rhs._active_face_materials;
   _active_neighbor_materials = rhs._active_neighbor_materials;
@@ -48,10 +48,7 @@ MaterialWarehouse::MaterialWarehouse(const MaterialWarehouse &rhs)
 
 MaterialWarehouse::~MaterialWarehouse()
 {
-  for (unsigned int i=0; i<_mats.size(); i++)
-    delete _mats[i];
 }
-
 
 void
 MaterialWarehouse::initialSetup()
@@ -64,60 +61,67 @@ MaterialWarehouse::initialSetup()
   for (std::map<BoundaryID, std::vector<Material *> >::iterator j = _active_boundary_materials.begin(); j != _active_boundary_materials.end(); ++j)
      sortMaterials(j->second);
 
-  for (unsigned int i=0; i<_mats.size(); i++)
-    _mats[i]->initialSetup();
+  for (unsigned int i=0; i<_all_objects.size(); i++)
+    _all_objects[i]->initialSetup();
 }
 
 void
 MaterialWarehouse::timestepSetup()
 {
-  for (unsigned int i=0; i<_mats.size(); i++)
-    _mats[i]->timestepSetup();
+  for (unsigned int i=0; i<_all_objects.size(); i++)
+    _all_objects[i]->timestepSetup();
 }
 
 void
 MaterialWarehouse::residualSetup()
 {
-  for (unsigned int i=0; i<_mats.size(); i++)
-    _mats[i]->residualSetup();
+  for (unsigned int i=0; i<_all_objects.size(); i++)
+    _all_objects[i]->residualSetup();
 }
 
 void
 MaterialWarehouse::jacobianSetup()
 {
-  for (unsigned int i=0; i<_mats.size(); i++)
-    _mats[i]->jacobianSetup();
+  for (unsigned int i=0; i<_all_objects.size(); i++)
+    _all_objects[i]->jacobianSetup();
 }
 
 bool
-MaterialWarehouse::hasMaterials(SubdomainID block_id)
+MaterialWarehouse::hasMaterials(SubdomainID block_id) const
 {
   return (_active_materials.find(block_id) != _active_materials.end());
 }
 
 bool
-MaterialWarehouse::hasFaceMaterials(SubdomainID block_id)
+MaterialWarehouse::hasFaceMaterials(SubdomainID block_id) const
 {
   return (_active_face_materials.find(block_id) != _active_face_materials.end());
 }
 
 bool
-MaterialWarehouse::hasNeighborMaterials(SubdomainID block_id)
+MaterialWarehouse::hasNeighborMaterials(SubdomainID block_id) const
 {
   return (_active_neighbor_materials.find(block_id) != _active_neighbor_materials.end());
 }
 
 bool
-MaterialWarehouse::hasBoundaryMaterials(BoundaryID boundary_id)
+MaterialWarehouse::hasBoundaryMaterials(BoundaryID boundary_id) const
 {
   return (_active_boundary_materials.find(boundary_id) != _active_boundary_materials.end());
+}
+
+std::vector<Material *> &
+MaterialWarehouse::getMaterials()
+{
+  mooseDeprecated("MaterialWarehouse::getMaterials() is deprecated - use MaterialWarehouse::all() instead");
+  return _all_objects;
 }
 
 std::vector<Material *> &
 MaterialWarehouse::getMaterials(SubdomainID block_id)
 {
   std::map<SubdomainID, std::vector<Material *> >::iterator mat_iter = _active_materials.find(block_id);
-  if (unlikely(mat_iter == _active_materials.end()))
+  if (mat_iter == _active_materials.end())
   {
     std::stringstream oss;
     oss << "Active Material Missing for block: " << block_id << "\n";
@@ -130,7 +134,7 @@ std::vector<Material *> &
 MaterialWarehouse::getFaceMaterials(SubdomainID block_id)
 {
   std::map<SubdomainID, std::vector<Material *> >::iterator mat_iter = _active_face_materials.find(block_id);
-  if (unlikely(mat_iter == _active_face_materials.end()))
+  if (mat_iter == _active_face_materials.end())
   {
     std::stringstream oss;
     oss << "Active Face Material Missing for block: " << block_id << "\n";
@@ -143,7 +147,7 @@ std::vector<Material *> &
 MaterialWarehouse::getNeighborMaterials(SubdomainID block_id)
 {
   std::map<SubdomainID, std::vector<Material *> >::iterator mat_iter = _active_neighbor_materials.find(block_id);
-  if (unlikely(mat_iter == _active_neighbor_materials.end()))
+  if (mat_iter == _active_neighbor_materials.end())
   {
     std::stringstream oss;
     oss << "Active Neighbor Material Missing for block: " << block_id << "\n";
@@ -156,13 +160,23 @@ std::vector<Material *> &
 MaterialWarehouse::getBoundaryMaterials(BoundaryID boundary_id)
 {
   std::map<BoundaryID, std::vector<Material *> >::iterator mat_iter = _active_boundary_materials.find(boundary_id);
-  if (unlikely(mat_iter == _active_boundary_materials.end()))
+  if (mat_iter == _active_boundary_materials.end())
   {
     std::stringstream oss;
     oss << "Active Boundary Material Missing for boundary: " << boundary_id << "\n";
     mooseError(oss.str());
   }
   return mat_iter->second;
+}
+
+std::vector<Material *> &
+MaterialWarehouse::active(SubdomainID block_id)
+{
+  std::map<SubdomainID, std::vector<Material *> >::iterator it = _active_materials.find(block_id);
+  if (it  == _active_materials.end())
+    mooseError("Active Material missing for block_id: " << block_id);
+
+  return it->second;
 }
 
 void MaterialWarehouse::updateMaterialDataState()
@@ -185,107 +199,58 @@ void MaterialWarehouse::updateMaterialDataState()
 }
 
 void
-MaterialWarehouse::addMaterial(std::vector<SubdomainID> blocks, Material *material)
+MaterialWarehouse::addMaterial(std::vector<SubdomainID> blocks, MooseSharedPointer<Material> & material)
 {
-  _mats.push_back(material);
+  _all_ptrs.push_back(material);
+  _all_objects.push_back(material.get());
 
   for (unsigned int i=0; i<blocks.size(); ++i)
   {
     SubdomainID blk_id = blocks[i];
-    _active_materials[blk_id].push_back(material);
-    _mat_by_name[material->name()].push_back(material);
+    _active_materials[blk_id].push_back(material.get());
+    _mat_by_name[material->name()].push_back(material.get());
   }
 }
 
-void MaterialWarehouse::addFaceMaterial(std::vector<SubdomainID> blocks, Material *material)
+void MaterialWarehouse::addFaceMaterial(std::vector<SubdomainID> blocks, MooseSharedPointer<Material> & material)
 {
-  _mats.push_back(material);
-
-  for (unsigned int i=0; i<blocks.size(); ++i)
-  {
-    SubdomainID blk_id = blocks[i];
-    _blocks.insert(blk_id);
-    _active_face_materials[blk_id].push_back(material);
-    _mat_by_name[material->name()].push_back(material);
-  }
-}
-
-void MaterialWarehouse::addNeighborMaterial(std::vector<SubdomainID> blocks, Material *material)
-{
-  _mats.push_back(material);
+  _all_ptrs.push_back(material);
+  _all_objects.push_back(material.get());
 
   for (unsigned int i=0; i<blocks.size(); ++i)
   {
     SubdomainID blk_id = blocks[i];
     _blocks.insert(blk_id);
-    _active_neighbor_materials[blk_id].push_back(material);
-    _mat_by_name[material->name()].push_back(material);
+    _active_face_materials[blk_id].push_back(material.get());
+    _mat_by_name[material->name()].push_back(material.get());
   }
 }
 
-void MaterialWarehouse::addBoundaryMaterial(std::vector<BoundaryID> boundaries, Material *material)
+void MaterialWarehouse::addNeighborMaterial(std::vector<SubdomainID> blocks, MooseSharedPointer<Material> & material)
 {
-  _mats.push_back(material);
+  _all_ptrs.push_back(material);
+  _all_objects.push_back(material.get());
+
+  for (unsigned int i=0; i<blocks.size(); ++i)
+  {
+    SubdomainID blk_id = blocks[i];
+    _blocks.insert(blk_id);
+    _active_neighbor_materials[blk_id].push_back(material.get());
+    _mat_by_name[material->name()].push_back(material.get());
+  }
+}
+
+void MaterialWarehouse::addBoundaryMaterial(std::vector<BoundaryID> boundaries, MooseSharedPointer<Material> & material)
+{
+  _all_ptrs.push_back(material);
+  _all_objects.push_back(material.get());
+
   for (std::vector<BoundaryID>::const_iterator it = boundaries.begin(); it != boundaries.end(); ++it)
   {
     _boundaries.insert(*it);
-    _active_boundary_materials[*it].push_back(material);
-    _mat_by_name[material->name()].push_back(material);
+    _active_boundary_materials[*it].push_back(material.get());
+    _mat_by_name[material->name()].push_back(material.get());
   }
-}
-
-void
-MaterialWarehouse::printMaterialMap() const
-{
-  unsigned int map_num=0;
-  for (std::vector<std::map<SubdomainID, std::vector<Material *> > *>::const_iterator i = _master_list.begin(); i != _master_list.end(); ++i)
-  {
-    switch (map_num)
-    {
-    case 0:
-      Moose::out << " Active materials on blocks:\n";
-      break;
-    case 1:
-      Moose::out << " Active face materials on blocks:\n";
-      break;
-    case 2:
-      Moose::out << " Active neighboring materials on blocks:\n";
-      break;
-    }
-
-    for (std::map<SubdomainID, std::vector<Material *> >::const_iterator k = (*i)->begin(); k != (*i)->end(); ++k)
-    {
-      Moose::out << "  block ID = " << k->first << ":\n";
-      for (unsigned int l=0; l<k->second.size(); l++)
-      {
-        Moose::out << "   material = " << k->second[l]->name() << ":\n";
-
-        for (std::set<std::string>::const_iterator it=k->second[l]->getSuppliedItems().begin();
-             it!=k->second[l]->getSuppliedItems().end(); it++)
-          Moose::out << "    " << *it << std::endl;
-      }
-      Moose::out << '\n';
-    }
-
-    ++map_num;
-  }
-
-  Moose::out << " Active materials on side sets:\n";
-  for (std::map<BoundaryID, std::vector<Material *> >::const_iterator k = _active_boundary_materials.begin();
-       k != _active_boundary_materials.end(); ++k)
-  {
-    Moose::out << "  side set ID = " << k->first << ":\n";
-    for (unsigned int l=0; l<k->second.size(); l++)
-    {
-      Moose::out << "   material = " << k->second[l]->name() << ":\n";
-
-      for (std::set<std::string>::const_iterator it=k->second[l]->getSuppliedItems().begin();
-           it!=k->second[l]->getSuppliedItems().end(); it++)
-        Moose::out << "    " << *it << '\n';
-    }
-    Moose::out << '\n';
-  }
-  Moose::out.flush();
 }
 
 void
@@ -364,10 +329,12 @@ MaterialWarehouse::sortMaterials(std::vector<Material *> & materials_vector)
   }
 }
 
-std::vector<Material *> &
-MaterialWarehouse::getMaterialsByName(const std::string & name)
+const std::vector<Material *> &
+MaterialWarehouse::getMaterialsByName(const std::string & name) const
 {
-  if (_mat_by_name.find(name) == _mat_by_name.end())
+  std::map<std::string, std::vector<Material *> >::const_iterator it = _mat_by_name.find(name);
+
+  if (it == _mat_by_name.end())
     mooseError("Could not find material with name '" << name << "'");
-  return _mat_by_name[name];
+  return it->second;
 }

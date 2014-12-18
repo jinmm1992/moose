@@ -13,12 +13,12 @@ template<>
 InputParameters validParams<RichardsDensityMethane20degC>()
 {
   InputParameters params = validParams<RichardsDensity>();
-  params.addClassDescription("Methane density (kg/m^3) at 20degC.  Pressure is assumed to be measured in Pascals.");
+  params.addClassDescription("Methane density (kg/m^3) at 20degC.  Pressure is assumed to be measured in Pascals.  NOTE: this expression is only valid to about P=20MPa.  Use van der Waals (RichardsDensityVDW) for higher pressures.");
   return params;
 }
 
 RichardsDensityMethane20degC::RichardsDensityMethane20degC(const std::string & name, InputParameters parameters) :
-  RichardsDensity(name, parameters)
+    RichardsDensity(name, parameters)
 {}
 
 
@@ -38,7 +38,6 @@ RichardsDensityMethane20degC::ddensity(Real p) const
     return 0.00654576947608E-3 + 2.08715433094E-13*p;
   else
     return 0.1*6.54576947608E-5*std::exp(6.54576947608E-5*p);
-
 }
 
 Real

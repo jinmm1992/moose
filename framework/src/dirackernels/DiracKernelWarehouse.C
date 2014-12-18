@@ -16,48 +16,46 @@
 #include "DiracKernel.h"
 
 
-DiracKernelWarehouse::DiracKernelWarehouse()
+DiracKernelWarehouse::DiracKernelWarehouse() :
+    Warehouse<DiracKernel>()
 {
 }
 
 DiracKernelWarehouse::~DiracKernelWarehouse()
 {
-  // delete  DiracKernels
-  for (std::vector<DiracKernel *>::iterator i=_dirac_kernels.begin(); i!=_dirac_kernels.end(); ++i)
-    delete *i;
 }
 
 void
 DiracKernelWarehouse::initialSetup()
 {
-  for (unsigned int i=0; i<_dirac_kernels.size(); i++)
-    _dirac_kernels[i]->initialSetup();
+  for (unsigned int i=0; i<_all_objects.size(); i++)
+    _all_objects[i]->initialSetup();
 }
 
 void
 DiracKernelWarehouse::timestepSetup()
 {
-  for (unsigned int i=0; i<_dirac_kernels.size(); i++)
-    _dirac_kernels[i]->timestepSetup();
+  for (unsigned int i=0; i<_all_objects.size(); i++)
+    _all_objects[i]->timestepSetup();
 }
 
 void
 DiracKernelWarehouse::residualSetup()
 {
-  for (unsigned int i=0; i<_dirac_kernels.size(); i++)
-    _dirac_kernels[i]->residualSetup();
+  for (unsigned int i=0; i<_all_objects.size(); i++)
+    _all_objects[i]->residualSetup();
 }
 
 void
 DiracKernelWarehouse::jacobianSetup()
 {
-  for (unsigned int i=0; i<_dirac_kernels.size(); i++)
-    _dirac_kernels[i]->jacobianSetup();
+  for (unsigned int i=0; i<_all_objects.size(); i++)
+    _all_objects[i]->jacobianSetup();
 }
 
-
 void
-DiracKernelWarehouse::addDiracKernel(DiracKernel * kernel)
+DiracKernelWarehouse::addDiracKernel(MooseSharedPointer<DiracKernel> & kernel)
 {
-  _dirac_kernels.push_back(kernel);
+  _all_ptrs.push_back(kernel);
+  _all_objects.push_back(kernel.get());
 }

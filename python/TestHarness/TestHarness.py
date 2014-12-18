@@ -2,6 +2,7 @@ import os, sys, re, inspect, types, errno, pprint, subprocess, io, shutil, time,
 import path_tool
 
 path_tool.activate_module('FactorySystem')
+path_tool.activate_module('argparse')
 
 from ParseGetPot import ParseGetPot
 from socket import gethostname
@@ -57,6 +58,7 @@ class TestHarness:
     self.moose_dir = moose_dir
     self.run_tests_dir = os.path.abspath('.')
     self.code = '2d2d6769726c2d6d6f6465'
+    self.error_code = 0x0
     # Assume libmesh is a peer directory to MOOSE if not defined
     if os.environ.has_key("LIBMESH_DIR"):
       self.libmesh_dir = os.environ['LIBMESH_DIR']
@@ -69,33 +71,52 @@ class TestHarness:
 
     self.checks = {}
     self.checks['platform'] = getPlatforms()
-    self.checks['compiler'] = getCompilers(self.libmesh_dir)
-    self.checks['petsc_version'] = getPetscVersion(self.libmesh_dir)
-    self.checks['mesh_mode'] = getLibMeshConfigOption(self.libmesh_dir, 'mesh_mode')
-    self.checks['dtk'] =  getLibMeshConfigOption(self.libmesh_dir, 'dtk')
-    self.checks['library_mode'] = getSharedOption(self.libmesh_dir)
-    self.checks['unique_ids'] = getLibMeshConfigOption(self.libmesh_dir, 'unique_ids')
-    self.checks['vtk'] =  getLibMeshConfigOption(self.libmesh_dir, 'vtk')
-    self.checks['tecplot'] =  getLibMeshConfigOption(self.libmesh_dir, 'tecplot')
+
+    # The TestHarness doesn't strictly require the existance of libMesh in order to run. Here we allow the user
+    # to select whether they want to probe for libMesh configuration options.
+    if self.options.skip_config_checks:
+      self.checks['compiler'] = set(['ALL'])
+      self.checks['petsc_version'] = 'N/A'
+      self.checks['library_mode'] = set(['ALL'])
+      self.checks['mesh_mode'] = set(['ALL'])
+      self.checks['dtk'] = set(['ALL'])
+      self.checks['unique_ids'] = set(['ALL'])
+      self.checks['vtk'] = set(['ALL'])
+      self.checks['tecplot'] = set(['ALL'])
+      self.checks['dof_id_bytes'] = set(['ALL'])
+    else:
+      self.checks['compiler'] = getCompilers(self.libmesh_dir)
+      self.checks['petsc_version'] = getPetscVersion(self.libmesh_dir)
+      self.checks['library_mode'] = getSharedOption(self.libmesh_dir)
+      self.checks['mesh_mode'] = getLibMeshConfigOption(self.libmesh_dir, 'mesh_mode')
+      self.checks['dtk'] =  getLibMeshConfigOption(self.libmesh_dir, 'dtk')
+      self.checks['unique_ids'] = getLibMeshConfigOption(self.libmesh_dir, 'unique_ids')
+      self.checks['vtk'] =  getLibMeshConfigOption(self.libmesh_dir, 'vtk')
+      self.checks['tecplot'] =  getLibMeshConfigOption(self.libmesh_dir, 'tecplot')
+      self.checks['dof_id_bytes'] = getLibMeshConfigOption(self.libmesh_dir, 'dof_id_bytes')
 
     # Override the MESH_MODE option if using '--parallel-mesh' option
     if self.options.parallel_mesh == True or \
           (self.options.cli_args != None and \
           self.options.cli_args.find('--parallel-mesh') != -1):
 
-      option_set = set()
-      option_set.add('ALL')
-      option_set.add('PARALLEL')
+      option_set = set(['ALL', 'PARALLEL'])
       self.checks['mesh_mode'] = option_set
 
-    method = set()
-    method.add('ALL')
-    method.add(self.options.method.upper())
+    method = set(['ALL', self.options.method.upper()])
     self.checks['method'] = method
 
     self.initialize(argv, app_name)
 
+  """
+  Recursively walks the current tree looking for tests to run
+  Error codes:
+  0x0  - Success
+  0x0* - Parser error
+  0x1* - TestHarness error
+  """
   def findAndRunTests(self):
+    self.error_code = 0x0
     self.preRun()
     self.start_time = clock()
 
@@ -105,7 +126,13 @@ class TestHarness:
       self.processPBSResults()
     else:
       self.options.processingPBS = False
-      for dirpath, dirnames, filenames in os.walk(os.getcwd(), followlinks=True):
+      base_dir = os.getcwd()
+      for dirpath, dirnames, filenames in os.walk(base_dir, followlinks=True):
+        # Prune submdule paths when searching for tests
+        if base_dir != dirpath and os.path.exists(os.path.join(dirpath, '.git')):
+          dirnames[:] = []
+
+        # Look for test directories that aren't in contrib folders
         if (self.test_match.search(dirpath) and "contrib" not in os.path.relpath(dirpath, os.getcwd())):
           for file in filenames:
             # set cluster_handle to be None initially (happens for each test)
@@ -126,7 +153,7 @@ class TestHarness:
               parser = Parser(self.factory, warehouse)
 
               # Parse it
-              parser.parse(file)
+              self.error_code = self.error_code | parser.parse(file)
 
               # Retrieve the tests from the warehouse
               testers = warehouse.getAllObjects()
@@ -138,38 +165,37 @@ class TestHarness:
               if self.options.enable_recover:
                 testers = self.appendRecoverableTests(testers)
 
-              # Go through the Testers and run them
-              for tester in testers:
-                # Double the alloted time for tests when running with the valgrind option
-                tester.setValgrindMode(self.options.valgrind_mode)
 
-                # When running in valgrind mode, we end up with a ton of output for each failed
-                # test.  Therefore, we limit the number of fails...
-                if self.options.valgrind_mode and self.num_failed > self.options.valgrind_max_fails:
-                  (should_run, reason) = (False, 'Max Fails Exceeded')
-                else:
-                  (should_run, reason) = tester.checkRunnableBase(self.options, self.checks)
-
-                if should_run:
-                  # Create the cluster launcher input file
-                  if self.options.pbs and self.options.cluster_handle == None:
-                    self.options.cluster_handle = open(dirpath + '/tests.cluster', 'a')
-                    self.options.cluster_handle.write('[Jobs]\n')
-
-                  command = tester.getCommand(self.options)
-                  # This method spawns another process and allows this loop to continue looking for tests
-                  # RunParallel will call self.testOutputAndFinish when the test has completed running
-                  # This method will block when the maximum allowed parallel processes are running
+              # Handle PBS tests.cluster file
+              if self.options.pbs:
+                (tester, command) = self.createClusterLauncher(dirpath, testers)
+                if command is not None:
                   self.runner.run(tester, command)
-                else: # This job is skipped - notify the runner
-                  if (reason != ''):
-                    self.handleTestResult(tester.parameters(), '', reason)
-                  self.runner.jobSkipped(tester.parameters()['test_name'])
+              else:
+                # Go through the Testers and run them
+                for tester in testers:
+                  # Double the alloted time for tests when running with the valgrind option
+                  tester.setValgrindMode(self.options.valgrind_mode)
 
-                if self.options.cluster_handle != None:
-                  self.options.cluster_handle.write('[]\n')
-                  self.options.cluster_handle.close()
-                  self.options.cluster_handle = None
+                  # When running in valgrind mode, we end up with a ton of output for each failed
+                  # test.  Therefore, we limit the number of fails...
+                  if self.options.valgrind_mode and self.num_failed > self.options.valgrind_max_fails:
+                    (should_run, reason) = (False, 'Max Fails Exceeded')
+                  elif self.num_failed > self.options.max_fails:
+                    (should_run, reason) = (False, 'Max Fails Exceeded')
+                  else:
+                    (should_run, reason) = tester.checkRunnableBase(self.options, self.checks)
+
+                  if should_run:
+                    command = tester.getCommand(self.options)
+                    # This method spawns another process and allows this loop to continue looking for tests
+                    # RunParallel will call self.testOutputAndFinish when the test has completed running
+                    # This method will block when the maximum allowed parallel processes are running
+                    self.runner.run(tester, command)
+                  else: # This job is skipped - notify the runner
+                    if (reason != ''):
+                      self.handleTestResult(tester.parameters(), '', reason)
+                      self.runner.jobSkipped(tester.parameters()['test_name'])
 
               os.chdir(saved_cwd)
               sys.path.pop()
@@ -180,9 +206,46 @@ class TestHarness:
       print '\n< checking batch status >\n'
       self.options.processingPBS = True
       self.processPBSResults()
-      self.cleanupAndExit()
-    else:
-      self.cleanupAndExit()
+
+    self.cleanup()
+
+    if self.num_failed:
+      self.error_code = self.error_code | 0x10
+
+    sys.exit(self.error_code)
+
+
+  def createClusterLauncher(self, dirpath, testers):
+    self.options.test_serial_number = 0
+    command = None
+    tester = None
+    # Create the tests.cluster input file
+    # Loop through each tester and create a job
+    for tester in testers:
+      (should_run, reason) = tester.checkRunnableBase(self.options, self.checks)
+      if should_run:
+        if self.options.cluster_handle == None:
+          self.options.cluster_handle = open(dirpath + '/' + self.options.pbs + '.cluster', 'w')
+        self.options.cluster_handle.write('[Jobs]\n')
+        # This returns the command to run as well as builds the parameters of the test
+        # The resulting command once this loop has completed is sufficient to launch
+        # all previous jobs
+        command = tester.getCommand(self.options)
+        self.options.cluster_handle.write('[]\n')
+        self.options.test_serial_number += 1
+      else: # This job is skipped - notify the runner
+        if (reason != ''):
+          self.handleTestResult(tester.parameters(), '', reason)
+          self.runner.jobSkipped(tester.parameters()['test_name'])
+
+    # Close the tests.cluster file
+    if self.options.cluster_handle is not None:
+      self.options.cluster_handle.close()
+      self.options.cluster_handle = None
+
+    # Return the final tester/command (sufficient to run all tests)
+    return (tester, command)
+
 
   def prunePath(self, filename):
     test_dir = os.path.abspath(os.path.dirname(filename))
@@ -241,15 +304,13 @@ class TestHarness:
         # Part 1:
         part1_params = part1.parameters()
         part1_params['test_name'] += '_part1'
-        part1_params['cli_args'].append('--half-transient')
-        part1_params['cli_args'].append('Outputs/auto_recovery_part1=true')
+        part1_params['cli_args'].append('--half-transient Outputs/checkpoint=true')
         part1_params['skip_checks'] = True
 
         # Part 2:
         part2_params = part2.parameters()
         part2_params['prereq'].append(part1.parameters()['test_name'])
         part2_params['delete_output_before_running'] = False
-        part2_params['cli_args'].append('Outputs/auto_recovery_part2=true')
         part2_params['cli_args'].append('--recover')
         part2_params.addParam('caveats', ['recover'], "")
 
@@ -268,6 +329,9 @@ class TestHarness:
 
     if self.options.pbs and self.options.processingPBS == False:
       (reason, output) = self.buildPBSBatch(output, tester)
+    elif self.options.dry_run:
+      reason = 'DRY_RUN'
+      output += '\n'.join(tester.processResultsCommand(self.moose_dir, self.options))
     else:
       (reason, output) = tester.processResults(self.moose_dir, retcode, self.options, output)
 
@@ -288,6 +352,8 @@ class TestHarness:
         result = 'LAUNCHED'
       else:
         result = 'OK'
+    elif reason == 'DRY_RUN':
+      result = 'DRY_RUN'
     else:
       result = 'FAILED (%s)' % reason
       did_pass = False
@@ -389,30 +455,31 @@ class TestHarness:
   def buildPBSBatch(self, output, tester):
     # Create/Update the batch file
     if 'command not found' in output:
-      return('QSUB NOT FOUND', '')
+      return ('QSUB NOT FOUND', '')
     else:
       # Get the PBS Job ID using qstat
-      # TODO: Build an error handler. If there was any issue launching the cluster launcher due to <any thing>, why die here.
-      job_id = re.findall(r'.*JOB_ID: (\d+)', output)[0]
-      qstat = ['qstat', '-f', '-x', str(job_id)]
-      qstat_command = subprocess.Popen(qstat, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-      qstat_stdout = qstat_command.communicate()[0]
-
-      # Get the Output_Path from qstat stdout
-      if qstat_stdout != None:
-        output_value = re.search(r'Output_Path(.*?)(^ +)', qstat_stdout, re.S | re.M).group(1)
-        output_value = output_value.split(':')[1].replace('\n', '').replace('\t', '')
+      results = re.findall(r'JOB_NAME: (\w+\d+) JOB_ID: (\d+) TEST_NAME: (\S+)', output, re.DOTALL)
+      if len(results) != 0:
+        file_name = self.options.pbs
+        job_list = open(os.path.abspath(os.path.join(tester.specs['executable'], os.pardir)) + '/' + file_name, 'a')
+        for result in results:
+          (test_dir, job_id, test_name) = result
+          qstat_command = subprocess.Popen(['qstat', '-f', '-x', str(job_id)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+          qstat_stdout = qstat_command.communicate()[0]
+          # Get the Output_Path from qstat stdout
+          if qstat_stdout != None:
+            output_value = re.search(r'Output_Path(.*?)(^ +)', qstat_stdout, re.S | re.M).group(1)
+            output_value = output_value.split(':')[1].replace('\n', '').replace('\t', '')
+          else:
+            job_list.close()
+            return ('QSTAT NOT FOUND', '')
+          # Write job_id, test['test_name'], and Ouput_Path to the batch file
+          job_list.write(str(job_id) + ':' + test_name + ':' + output_value + ':' + self.options.input_file_name  + '\n')
+        # Return to TestHarness and inform we have launched the job
+        job_list.close()
+        return ('', 'LAUNCHED')
       else:
-        return ('QSTAT NOT FOUND', '')
-
-      # Write job_id, test['test_name'], and Ouput_Path to the batch file
-      file_name = self.options.pbs
-      job_list = open(os.path.abspath(os.path.join(tester.specs['executable'], os.pardir)) + '/' + file_name, 'a')
-      job_list.write(str(job_id) + ':' + tester.specs['test_name'] + ':' + output_value + ':' + self.options.input_file_name  + '\n')
-      job_list.close()
-
-      # Return to TestHarness and inform we have launched the job
-      return ('', 'LAUNCHED')
+        return ('QSTAT INVALID RESULTS', '')
 
   def cleanPBSBatch(self):
     # Open the PBS batch file and assign it to a list
@@ -431,8 +498,8 @@ class TestHarness:
         batch_dir = os.path.abspath(os.path.join(job[2], os.pardir)).split('/')
         if os.path.exists('/'.join(batch_dir)):
           shutil.rmtree('/'.join(batch_dir))
-        if os.path.exists('/'.join(batch_dir[:-1]) + '/' + job[3] + '.cluster'):
-          os.remove('/'.join(batch_dir[:-1]) + '/' + job[3] + '.cluster')
+        if os.path.exists('/'.join(batch_dir[:-1]) + '/' + self.options.pbs_cleanup + '.cluster'):
+          os.remove('/'.join(batch_dir[:-1]) + '/' + self.options.pbs_cleanup + '.cluster')
     os.remove(self.options.pbs_cleanup)
 
 # END PBS Defs
@@ -451,7 +518,7 @@ class TestHarness:
     # in the 'Final Test Results' area.
     if add_to_table:
       self.test_table.append( (specs, output, result, timing, start, end) )
-      if result.find('OK') != -1:
+      if result.find('OK') != -1 or result.find('DRY_RUN') != -1:
         self.num_passed += 1
       elif result.find('skipped') != -1:
         self.num_skipped += 1
@@ -515,7 +582,7 @@ class TestHarness:
       result_file.close()
 
   # Print final results, close open files, and exit with the correct error code
-  def cleanupAndExit(self):
+  def cleanup(self):
     # Print the results table again if a bunch of output was spewed to the screen between
     # tests as they were running
     if self.options.verbose or (self.num_failed != 0 and not self.options.quiet):
@@ -536,13 +603,17 @@ class TestHarness:
       summary = '<b>%d passed</b>'
     summary += ', <b>%d skipped</b>'
     if self.num_pending:
-      summary += ', <c>%d pending</c>, '
+      summary += ', <c>%d pending</c>'
     else:
-      summary += ', <b>%d pending</b>, '
+      summary += ', <b>%d pending</b>'
     if self.num_failed:
-      summary += '<r>%d FAILED</r>'
+      summary += ', <r>%d FAILED</r>'
     else:
-      summary += '<b>%d failed</b>'
+      summary += ', <b>%d failed</b>'
+
+    # Mask off TestHarness error codes to report parser errors
+    if self.error_code & 0x0F:
+      summary += ', <r>FATAL PARSER ERROR</r>'
 
     print colorText( summary % (self.num_passed, self.num_skipped, self.num_pending, self.num_failed), self.options, "", html=True )
     if self.options.pbs:
@@ -552,9 +623,6 @@ class TestHarness:
 
     if self.num_failed == 0:
       self.writeState(self.executable)
-      sys.exit(0)
-    else:
-      sys.exit(1)
 
   def initialize(self, argv, app_name):
     # Initialize the parallel runner with how many tests to run in parallel
@@ -606,6 +674,7 @@ class TestHarness:
     parser.add_argument('-s', '--scale', action='store_true', dest='scaling', help='Scale problems that have SCALE_REFINE set')
     parser.add_argument('-i', nargs=1, action='store', type=str, dest='input_file_name', default='tests', help='The default test specification file to look for (default="tests").')
     parser.add_argument('--libmesh_dir', nargs=1, action='store', type=str, dest='libmesh_dir', help='Currently only needed for bitten code coverage')
+    parser.add_argument('--skip-config-checks', action='store_true', dest='skip_config_checks', help='Skip configuration checks (all tests will run regardless of restrictions)')
     parser.add_argument('--parallel', '-p', nargs='?', action='store', type=int, dest='parallel', const=1, help='Number of processors to use when running mpiexec')
     parser.add_argument('--n-threads', nargs=1, action='store', type=int, dest='nthreads', default=1, help='Number of threads to use when running mpiexec')
     parser.add_argument('-d', action='store_true', dest='debug_harness', help='Turn on Test Harness debugging')
@@ -613,11 +682,14 @@ class TestHarness:
     parser.add_argument('--valgrind', action='store_const', dest='valgrind_mode', const='NORMAL', help='Run normal valgrind tests')
     parser.add_argument('--valgrind-heavy', action='store_const', dest='valgrind_mode', const='HEAVY', help='Run heavy valgrind tests')
     parser.add_argument('--valgrind-max-fails', nargs=1, type=int, dest='valgrind_max_fails', default=5, help='The number of valgrind tests allowed to fail before any additional valgrind tests will run')
+    parser.add_argument('--max-fails', nargs=1, type=int, dest='max_fails', default=50, help='The number of tests allowed to fail before any additional tests will run')
     parser.add_argument('--pbs', nargs='?', metavar='batch_file', dest='pbs', const='generate', help='Enable launching tests via PBS. If no batch file is specified one will be created for you')
     parser.add_argument('--pbs-cleanup', nargs=1, metavar='batch_file', help='Clean up the directories/files created by PBS. You must supply the same batch_file used to launch PBS.')
     parser.add_argument('--re', action='store', type=str, dest='reg_exp', help='Run tests that match --re=regular_expression')
     parser.add_argument('--parallel-mesh', action='store_true', dest='parallel_mesh', help="Pass --parallel-mesh to executable")
+    parser.add_argument('--error', action='store_true', help='Run the tests with warnings as errors')
     parser.add_argument('--cli-args', nargs='?', type=str, dest='cli_args', help='Append the following list of arguments to the command line (Encapsulate the command in quotes)')
+    parser.add_argument('--dry-run', action='store_true', dest='dry_run', help="Pass --dry-run to print commands to run, but don't actually run them")
 
     outputgroup = parser.add_argument_group('Output Options', 'These options control the output of the test harness. The sep-files options write output to files named test_name.TEST_RESULT.txt. All file output will overwrite old files')
     outputgroup.add_argument('-v', '--verbose', action='store_true', dest='verbose', help='show the output of every test that fails')
@@ -707,7 +779,8 @@ class TestHarness:
       self.cleanPBSBatch()
       sys.exit(0)
 
-
+  def getOptions(self):
+    return self.options
 
 #################################################################################################################################
 # The TestTimer TestHarness

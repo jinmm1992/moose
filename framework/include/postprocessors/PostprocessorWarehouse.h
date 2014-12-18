@@ -18,7 +18,7 @@
 #include <vector>
 #include <map>
 #include <set>
-#include "MooseTypes.h"
+#include "Warehouse.h"
 
 class Postprocessor;
 class ElementPostprocessor;
@@ -30,7 +30,7 @@ class GeneralPostprocessor;
 /**
  * Holds postprocessors and provides some services
  */
-class PostprocessorWarehouse
+class PostprocessorWarehouse : public Warehouse<Postprocessor>
 {
 public:
   PostprocessorWarehouse();
@@ -47,40 +47,34 @@ public:
    * @param block_id Block ID
    * @return The list of all elemental postprocessors
    */
-  const std::vector<ElementPostprocessor *> & elementPostprocessors(SubdomainID block_id) { return _element_postprocessors[block_id]; }
+  const std::vector<ElementPostprocessor *> & elementPostprocessors(SubdomainID block_id) const;
 
   /**
    * Get the list of side postprocessors
    * @param boundary_id Boundary ID
    * @return The list of side postprocessors
    */
-  const std::vector<SidePostprocessor *> & sidePostprocessors(BoundaryID boundary_id) { return _side_postprocessors[boundary_id]; }
+  const std::vector<SidePostprocessor *> & sidePostprocessors(BoundaryID boundary_id) const;
 
   /**
    * Get the list of nodal postprocessors
    * @param boundary_id Boundary ID
    * @return The list of all nodal postprocessors
    */
-  const std::vector<NodalPostprocessor *> & nodalPostprocessors(BoundaryID boundary_id) { return _nodal_postprocessors[boundary_id]; }
+  const std::vector<NodalPostprocessor *> & nodalPostprocessors(BoundaryID boundary_id) const;
 
   /**
    * Get the list of nodal postprocessors restricted on the specified subdomain
    * @param subdomain_id Subdomain ID
    * @return The list of all block nodal postprocessors
    */
-  const std::vector<NodalPostprocessor *> & blockNodalPostprocessors(SubdomainID subdomain_id) { return _block_nodal_postprocessors[subdomain_id]; }
+  const std::vector<NodalPostprocessor *> & blockNodalPostprocessors(SubdomainID block_id) const;
 
   /**
    * Get the list general postprocessors
    * @return The list of general postprocessors
    */
-  const std::vector<GeneralPostprocessor *> & genericPostprocessors() { return _generic_postprocessors; }
-
-  /**
-   * Get the list of all postprocessors
-   * @return The list of all postprocessors
-   */
-  const std::vector<Postprocessor *> & all() { return _all_postprocessors; }
+  const std::vector<GeneralPostprocessor *> & genericPostprocessors() const { return _generic_postprocessors; }
 
   /**
    * Get a pointer to a postprocessor
@@ -93,31 +87,31 @@ public:
    * Add a postprocessor
    * @param postprocessor Postprocessor being added
    */
-  void addPostprocessor(Postprocessor *postprocessor);
+  void addPostprocessor(MooseSharedPointer<Postprocessor> & postprocessor);
 
   /**
    * Get the list of blocks with postprocessors
    * @return The list of block IDs with postprocessors
    */
-  const std::set<SubdomainID> & blocks() { return _block_ids_with_postprocessors; }
+  const std::set<SubdomainID> & blocks() const { return _block_ids_with_postprocessors; }
 
   /**
    * Get the list of boundary IDs with postprocessors
    * @return The list of boundary IDs with postprocessors
    */
-  const std::set<BoundaryID> & boundaryIds() { return _boundary_ids_with_postprocessors; }
+  const std::set<BoundaryID> & boundaryIds() const { return _boundary_ids_with_postprocessors; }
 
   /**
    * Get the list of nodeset IDs with postprocessors
    * @return The list of nodeset IDs with postprocessors
    */
-  const std::set<BoundaryID> & nodesetIds() { return _nodeset_ids_with_postprocessors; }
+  const std::set<BoundaryID> & nodesetIds() const { return _nodeset_ids_with_postprocessors; }
 
   /**
    * Get the list of subdomain IDs with *nodal* postprocessors
    * @return The list of subdomain IDs with postprocessors
    */
-  const std::set<SubdomainID> & blockNodalIds() { return _block_ids_with_nodal_postprocessors; }
+  const std::set<SubdomainID> & blockNodalIds() const { return _block_ids_with_nodal_postprocessors; }
 
 protected:
   std::vector<ElementPostprocessor *> _all_element_postprocessors;
@@ -134,7 +128,6 @@ protected:
   std::map<SubdomainID, std::vector<NodalPostprocessor *> > _block_nodal_postprocessors;
 
   std::vector<GeneralPostprocessor *> _generic_postprocessors;
-  std::vector<Postprocessor *> _all_postprocessors;
 
   /// All of the block ids that have postprocessors specified to act on them
   std::set<SubdomainID> _block_ids_with_postprocessors;
@@ -144,6 +137,10 @@ protected:
   std::set<BoundaryID> _nodeset_ids_with_postprocessors;
   /// All of the block ids that have nodal postprocessors specified to act on them
   std::set<SubdomainID> _block_ids_with_nodal_postprocessors;
+
+private:
+  /// Hold shared pointers for automatic cleanup
+  std::vector<MooseSharedPointer<Postprocessor> > _all_ptrs;
 };
 
 #endif // POSTPROCESSORWAREHOUSE_H

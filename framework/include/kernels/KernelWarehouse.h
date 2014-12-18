@@ -19,7 +19,9 @@
 #include <map>
 #include <set>
 
+#include "Warehouse.h"
 #include "MooseTypes.h"
+#include "MooseError.h"
 
 class KernelBase;
 class ScalarKernel;
@@ -27,68 +29,75 @@ class ScalarKernel;
 /**
  * Holds kernels and provides some services
  */
-class KernelWarehouse
+class KernelWarehouse : public Warehouse<KernelBase>
 {
 public:
   KernelWarehouse();
   virtual ~KernelWarehouse();
 
   // Setup /////
-  void initialSetup();
-  void timestepSetup();
-  void residualSetup();
-  void jacobianSetup();
-
-  /**
-   * Get list of all kernels
-   * @return The list of all active kernels
-   */
-  const std::vector<KernelBase *> & all() { return _all_kernels; }
+  virtual void initialSetup();
+  virtual void timestepSetup();
+  virtual void residualSetup();
+  virtual void jacobianSetup();
 
   /**
    * Get the list of all active kernels
    * @return The list of all active kernels
    */
-  const std::vector<KernelBase *> & active() { return _active_kernels; }
+  const std::vector<KernelBase *> & active() const { return _active_kernels; }
 
   /**
    * Get the list of all active time kernels
    * @return The list of all active time kernels
    */
-  const std::vector<KernelBase *> & activeTime(){ return _time_kernels;}
-
+  const std::vector<KernelBase *> & activeTime() const { return _time_kernels;}
 
   /**
    * Get the list of all active non-time kernels
    * @return The list of all active non-time kernels
    */
-  const std::vector<KernelBase *> & activeNonTime(){ return _non_time_kernels;}
+  const std::vector<KernelBase *> & activeNonTime() const { return _non_time_kernels;}
+
+  /**
+   * See if there are active kernels for a variable
+   * @param var The variable number
+   * @return Boolean indicating whether there are active kernels
+   */
+  bool hasActiveKernels(unsigned int var) const
+    {
+      return _active_var_kernels.find(var) != _active_var_kernels.end();
+    }
 
   /**
    * Get the list of all active kernels for a variable
    * @param var The variable number
    * @return The list of all active kernels
    */
-  const std::vector<KernelBase *> & activeVar(unsigned int var) { return _active_var_kernels[var]; }
+  const std::vector<KernelBase *> & activeVar(unsigned int var) const
+    {
+      mooseAssert(_active_var_kernels.find(var) != _active_var_kernels.end(), "No active kernels");
+      return _active_var_kernels.find(var)->second;
+    }
 
   /**
    * Get list of scalar kernels
    * @return The list of scalar active kernels
    */
-  const std::vector<ScalarKernel *> & scalars() { return _scalar_kernels; }
+  const std::vector<ScalarKernel *> & scalars() const { return _scalar_kernels; }
 
   /**
    * Add a kernels
    * @param kernel Kernel being added
    * @param block_ids Set of active domain where the kernel is defined
    */
-  void addKernel(KernelBase *kernel, const std::set<SubdomainID> & block_ids);
+  void addKernel(MooseSharedPointer<KernelBase> & kernel, const std::set<SubdomainID> & block_ids);
 
   /**
    * Add a scalar kernels
    * @param kernel Scalar kernel being added
    */
-  void addScalarKernel(ScalarKernel *kernel);
+  void addScalarKernel(MooseSharedPointer<ScalarKernel> & kernel);
 
   /**
    * Update the list of active kernels
@@ -109,6 +118,15 @@ public:
   bool subdomainsCovered(std::set<SubdomainID> & subdomains_covered, std::set<std::string> & unique_variable_count) const;
 
 protected:
+  ///@{
+  /**
+   * We are using MooseSharedPointer to handle the cleanup of the pointers at the end of execution.
+   * This is necessary since several warehouses might be sharing a single instance of a MooseObject.
+   */
+  std::vector<MooseSharedPointer<KernelBase> > _all_ptrs;
+  std::vector<MooseSharedPointer<ScalarKernel> > _all_scalar_ptrs;
+  ///@}
+
   /// Kernels active on a block and in specified time
   std::vector<KernelBase *> _active_kernels;
   ///  active TimeDerivitive Kernels
@@ -119,8 +137,6 @@ protected:
 
   /// Kernels active on a block and in specified time per variable
   std::map<unsigned int, std::vector<KernelBase *> > _active_var_kernels;
-  /// All instances of kernels
-  std::vector<KernelBase *> _all_kernels;
   /// Kernels that live everywhere (on the whole domain)
   std::vector<KernelBase *> _time_global_kernels;
 

@@ -16,11 +16,15 @@
 #include "RigidBodyModes3D.h"
 #include "CoupledDirectionalMeshHeightInterpolation.h"
 #include "CInterfacePosition.h"
+#include "ThermoDiffusion.h"
 
 template<>
 InputParameters validParams<MiscApp>()
 {
   InputParameters params = validParams<MooseApp>();
+  params.set<bool>("use_legacy_uo_initialization") = true;
+  params.set<bool>("use_legacy_uo_aux_computation") = false;
+
   return params;
 }
 
@@ -59,6 +63,7 @@ MiscApp::registerObjects(Factory & factory)
   registerKernel(JouleHeating);
   registerKernel(CoefTimeDerivative);
   registerKernel(GaussContForcing);
+  registerKernel(ThermoDiffusion);
 
   registerMaterial(Density);
 

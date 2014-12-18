@@ -15,12 +15,13 @@
 #ifndef AUXWAREHOUSE_H
 #define AUXWAREHOUSE_H
 
+#include "Warehouse.h"
+
 #include <vector>
 #include <map>
 #include <string>
 #include <list>
 #include <set>
-#include "MooseTypes.h"
 
 class AuxKernel;
 class AuxScalarKernel;
@@ -30,7 +31,7 @@ class AuxScalarKernel;
  *
  * Used inside auxiliary system to store aux. kernels
  */
-class AuxWarehouse
+class AuxWarehouse : public Warehouse<AuxKernel>
 {
 public:
   AuxWarehouse();
@@ -42,9 +43,8 @@ public:
   void residualSetup();
   void jacobianSetup();
 
-  const std::vector<AuxKernel *> & all() { return _all_aux_kernels; }
-  const std::vector<AuxKernel *> & allElementKernels() { return _all_element_aux_kernels; }
-  const std::vector<AuxKernel *> & allNodalKernels() { return _all_nodal_aux_kernels; }
+  const std::vector<AuxKernel *> & allElementKernels() const { return _all_element_aux_kernels; }
+  const std::vector<AuxKernel *> & allNodalKernels() const { return _all_nodal_aux_kernels; }
 
   const std::vector<AuxKernel *> & activeBlockNodalKernels(SubdomainID block) { return _active_block_nodal_aux_kernels[block]; }
   const std::vector<AuxKernel *> & activeBlockElementKernels(SubdomainID block) { return _active_block_element_aux_kernels[block]; }
@@ -64,17 +64,15 @@ public:
    * @param aux Kernel being added
    * @param block_ids Set of subdomain this kernel is active on
    */
-  void addAuxKernel(AuxKernel *aux);
+  void addAuxKernel(MooseSharedPointer<AuxKernel> & aux);
 
   /**
    * Add a scalar kernels
    * @param kernel Scalar kernel being added
    */
-  void addScalarKernel(AuxScalarKernel *kernel);
+  void addScalarKernel(MooseSharedPointer<AuxScalarKernel> & kernel);
 
 protected:
-  /// all aux kernels
-  std::vector<AuxKernel *> _all_aux_kernels;
   /// all element aux kernels
   std::vector<AuxKernel *> _all_element_aux_kernels;
   /// all nodal aux kernels
@@ -96,6 +94,15 @@ protected:
   std::vector<AuxScalarKernel *> _scalar_kernels;
 
 private:
+  ///@{
+  /**
+   * We are using MooseSharedPointer to handle the cleanup of the pointers at the end of execution.
+   * This is necessary since several warehouses might be sharing a single instance of a MooseObject.
+   */
+  std::vector<MooseSharedPointer<AuxKernel> > _all_ptrs;
+  std::vector<MooseSharedPointer<AuxScalarKernel> > _all_scalar_ptrs;
+  ///@}
+
   /**
    * This routine uses the Dependency Resolver to sort AuxKernels based on dependencies they
    * might have on coupled values

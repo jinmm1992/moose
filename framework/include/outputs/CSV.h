@@ -29,8 +29,7 @@ InputParameters validParams<CSV>();
  *
  * @see Exodus
  */
-class CSV :
-  public TableOutput
+class CSV : public TableOutput
 {
 public:
 
@@ -44,15 +43,12 @@ public:
    */
   CSV(const std::string & name, InputParameters & parameters);
 
-  /**
-   * Class destructor
-   */
-  virtual ~CSV();
+protected:
 
   /**
    * Output the table to a *.csv file
    */
-  virtual void output();
+  virtual void output(const OutputExecFlagType & type);
 
   /**
    * The filename for the output file
@@ -66,10 +62,38 @@ public:
    */
   void initialSetup();
 
+  /**
+   * Sets the write flag and calls TableOutput::outputScalarVariables()
+   */
+  virtual void outputScalarVariables();
+
+  /**
+   * Sets the write flag and calls TableOutput::outputPostprocessors()
+   */
+  virtual void outputPostprocessors();
+
+  /**
+   * Sets the write flag and calls TableOutput::outputVectorPostprocessors()
+   */
+  virtual void outputVectorPostprocessors();
+
 private:
 
   /// Flag for aligning data in .csv file
   bool _align;
+
+  /// Decimal digits per number in the CSV file
+  unsigned int _precision;
+
+  /// Overwrite the default delimiter?
+  bool _set_delimiter;
+  std::string _delimiter;
+
+  /// Flag for writting scalar and/or postprocessor data
+  bool _write_all_table;
+
+  /// Flag for writting vector postprocessor data
+  bool _write_vector_table;
 };
 
 #endif /* CSV_H */

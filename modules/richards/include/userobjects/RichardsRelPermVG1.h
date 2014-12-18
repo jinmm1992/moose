@@ -22,8 +22,11 @@ InputParameters validParams<RichardsRelPermVG1>();
  */
 class RichardsRelPermVG1 : public RichardsRelPermVG
 {
- public:
+public:
   RichardsRelPermVG1(const std::string & name, InputParameters parameters);
+
+  /// just prints some (maybe) useful info to the console
+  void initialSetup();
 
   /**
    * relative permeability as a function of effective saturation
@@ -43,7 +46,7 @@ class RichardsRelPermVG1 : public RichardsRelPermVG
    */
   Real d2relperm(Real seff) const;
 
- protected:
+protected:
 
   /// immobile saturation
   Real _simm;

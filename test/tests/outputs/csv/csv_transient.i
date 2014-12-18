@@ -86,7 +86,5 @@
 
 [Outputs]
   output_initial = true
-  console = true
   csv = true
-  output_initial = true
 []

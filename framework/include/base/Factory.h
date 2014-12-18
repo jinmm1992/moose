@@ -20,6 +20,7 @@
 
 #include "MooseObject.h"
 #include "InputParameters.h"
+#include "MooseTypes.h"
 
 /**
  * Macros
@@ -90,9 +91,14 @@
 #define registerDeprecatedObjectName(obj, name, time)     factory.regReplaced<obj>(stringifyName(obj), name, time)
 
 /**
+ * Typedef to wrap shared pointer type
+ */
+typedef MooseSharedPointer<MooseObject> MooseObjectPtr;
+
+/**
  * Typedef for function to build objects
  */
-typedef MooseObject * (*buildPtr)(const std::string & name, InputParameters parameters);
+typedef MooseObjectPtr (*buildPtr)(const std::string & name, InputParameters parameters);
 
 /**
  * Typedef for validParams
@@ -108,9 +114,9 @@ typedef std::map<std::string, paramsPtr>::iterator registeredMooseObjectIterator
  * Build an object of type T
  */
 template<class T>
-MooseObject * buildObject(const std::string & name, InputParameters parameters)
+MooseObjectPtr buildObject(const std::string & name, InputParameters parameters)
 {
-  return new T(name, parameters);
+  return MooseObjectPtr(new T(name, parameters));
 }
 
 /**
@@ -183,7 +189,7 @@ public:
    * @param parameters Parameters this object should have
    * @return The created object
    */
-  virtual MooseObject *create(const std::string & obj_name, const std::string & name, InputParameters parameters);
+  MooseSharedPointer<MooseObject> create(const std::string & obj_name, const std::string & name, InputParameters parameters);
 
   /**
    * Access to registered object iterator (begin)
@@ -224,7 +230,6 @@ protected:
 
   /// Storage for the deprecated objects that have replacements
   std::map<std::string, std::string> _deprecated_name;
-
 };
 
 #endif /* FACTORY_H */

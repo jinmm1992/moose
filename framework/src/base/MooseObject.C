@@ -13,7 +13,6 @@
 /****************************************************************/
 
 #include "MooseObject.h"
-
 #include "MooseApp.h"
 
 template<>
@@ -25,6 +24,7 @@ InputParameters validParams<MooseObject>()
 
 
 MooseObject::MooseObject(const std::string & name, InputParameters parameters) :
+  ConsoleStreamInterface(*parameters.get<MooseApp *>("_moose_app")), // Can't call getParam before pars is set
   ParallelObject(*parameters.get<MooseApp *>("_moose_app")), // Can't call getParam before pars is set
   _name(name),
   _pars(parameters),

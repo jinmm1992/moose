@@ -40,7 +40,7 @@ InputParameters validParams<Transient>()
   InputParameters params = validParams<Executioner>();
   std::vector<Real> sync_times(1);
   sync_times[0] = -std::numeric_limits<Real>::max();
-  MooseEnum schemes("implicit-euler, explicit-euler, crank-nicolson, bdf2, rk-2", "implicit-euler");
+  MooseEnum schemes("implicit-euler explicit-euler crank-nicolson bdf2 rk-2", "implicit-euler");
 
   params.addParam<Real>("start_time",      0.0,    "The start time of the simulation");
   params.addParam<Real>("end_time",        1.0e30, "The end time of the simulation");
@@ -83,7 +83,6 @@ Transient::Transient(const std::string & name, InputParameters parameters) :
     Executioner(name, parameters),
     _problem(*parameters.getCheckedPointerParam<FEProblem *>("_fe_problem", "This might happen if you don't have a mesh")),
     _time_scheme(getParam<MooseEnum>("scheme")),
-    _time_stepper(NULL),
     _t_step(_problem.timeStep()),
     _time(_problem.time()),
     _time_old(_problem.timeOld()),
@@ -166,22 +165,19 @@ Transient::Transient(const std::string & name, InputParameters parameters) :
 
 Transient::~Transient()
 {
-  delete _time_stepper;
-  // This problem was built by the Factory and needs to be released by this destructor
-  delete &_problem;
 }
 
 void
 Transient::init()
 {
-  if (_time_stepper == NULL)
+  if (!_time_stepper.get())
   {
     InputParameters pars = _app.getFactory().getValidParams("ConstantDT");
     pars.set<FEProblem *>("_fe_problem") = &_problem;
     pars.set<Transient *>("_executioner") = this;
     pars.set<Real>("dt") = getParam<Real>("dt");
     pars.set<bool>("reset_dt") = getParam<bool>("reset_dt");
-    _time_stepper = static_cast<TimeStepper *>(_app.getFactory().create("ConstantDT", "TimeStepper", pars));
+    _time_stepper = MooseSharedNamespace::static_pointer_cast<TimeStepper>(_app.getFactory().create("ConstantDT", "TimeStepper", pars));
   }
 
   _problem.initialSetup();
@@ -191,13 +187,12 @@ Transient::init()
     _time_old = _time;
 
   Moose::setup_perf_log.push("Output Initial Condition","Setup");
-  _output_warehouse.outputInitial();
+  _output_warehouse.outputStep(OUTPUT_INITIAL);
   Moose::setup_perf_log.pop("Output Initial Condition","Setup");
 
   // If this is the first step
   if (_t_step == 0)
     _t_step = 1;
-
 
   if (_t_step > 1) //Recover case
     _dt_old = _dt;
@@ -215,6 +210,7 @@ Transient::init()
 void
 Transient::execute()
 {
+
   preExecute();
 
   // NOTE: if you remove this line, you will see a subset of tests failing. Those tests might have a wrong answer and might need to be regolded.
@@ -222,7 +218,7 @@ Transient::execute()
   // is to maintain backward compatibility and so that MOOSE is giving the same answer.  However, we might remove this call and regold the test
   // in the future eventually.
   if (!_app.isRecovering())
-    _problem.copyOldSolutions();
+    _problem.advanceState();
 
   // Start time loop...
   while (true)
@@ -233,10 +229,7 @@ Transient::execute()
     _first = false;
 
     if (!keepGoing())
-    {
-      _output_warehouse.outputFinal();
       break;
-    }
 
     computeDT();
 
@@ -247,7 +240,7 @@ Transient::execute()
     _steps_taken++;
   }
 
-
+  _output_warehouse.outputStep(OUTPUT_FINAL);
   postExecute();
 }
 
@@ -270,7 +263,7 @@ Transient::incrementStepOrReject()
     _time_old = _time; // = _time_old + _dt;
     _t_step++;
 
-    _problem.copyOldSolutions();
+    _problem.advanceState();
   }
   else
   {
@@ -285,12 +278,14 @@ Transient::incrementStepOrReject()
 void
 Transient::takeStep(Real input_dt)
 {
-  for (_picard_it=0; _picard_it<_picard_max_its && _picard_converged==false; _picard_it++)
+  _picard_it = 0;
+  while (_picard_it<_picard_max_its && _picard_converged == false)
   {
     if (_picard_max_its > 1)
-      Moose::out<<"Beginning Picard Iteration "<<_picard_it<<"\n"<<std::endl;
+      _console << "Beginning Picard Iteration " << _picard_it << "\n" << std::endl;
 
     solveStep(input_dt);
+    ++_picard_it;
   }
 }
 
@@ -307,8 +302,6 @@ Transient::solveStep(Real input_dt)
   Real current_dt = _dt;
 
   _problem.onTimestepBegin();
-  if (lastSolveConverged())
-    _problem.updateMaterials();             // Update backward material data structures
 
   // Increment time
   _time = _time_old + _dt;
@@ -330,6 +323,8 @@ Transient::solveStep(Real input_dt)
   // Compute Post-Aux User Objects (Timestep begin)
   _problem.computeUserObjects(EXEC_TIMESTEP_BEGIN, UserObjectWarehouse::POST_AUX);
 
+  // Perform output for timestep begin
+  _output_warehouse.outputStep(OUTPUT_TIMESTEP_BEGIN);
 
   if (_picard_max_its > 1)
   {
@@ -337,18 +332,19 @@ Transient::solveStep(Real input_dt)
     if (_picard_it == 0) // First Picard iteration - need to save off the initial nonlinear residual
     {
       _picard_initial_norm = current_norm;
-      Moose::out<<"Initial Picard Norm: "<<_picard_initial_norm<<std::endl;
+      _console << "Initial Picard Norm: " << _picard_initial_norm << '\n';
     }
     else
-      Moose::out<<"Current Picard Norm: "<<current_norm<<std::endl;
+      _console << "Current Picard Norm: " << current_norm << '\n';
 
     Real relative_drop = current_norm / _picard_initial_norm;
 
     if (current_norm < _picard_abs_tol || relative_drop < _picard_rel_tol)
     {
-      Moose::out<<"Picard converged!"<<std::endl;
+      _console << "Picard converged!" << std::endl;
 
       _picard_converged = true;
+      _time_stepper->acceptStep();
       return;
     }
   }
@@ -358,9 +354,10 @@ Transient::solveStep(Real input_dt)
   // We know whether or not the nonlinear solver thinks it converged, but we need to see if the executioner concurs
   if (lastSolveConverged())
   {
-    Moose::out << "Solve Converged!" << std::endl;
+    _console << COLOR_GREEN << " Solve Converged!" << COLOR_DEFAULT << std::endl;
 
-    _time_stepper->acceptStep();
+    if (_picard_max_its <= 1)
+      _time_stepper->acceptStep();
 
     _solution_change_norm = _problem.solutionChangeNorm();
 
@@ -380,10 +377,10 @@ Transient::solveStep(Real input_dt)
   }
   else
   {
-    Moose::out << "Solve Did NOT Converge!" << std::endl;
+    _console << COLOR_RED << " Solve Did NOT Converge!" << COLOR_DEFAULT << std::endl;
 
     // Perform the output of the current, failed time step (this only occurs if desired)
-    _output_warehouse.outputFailedStep();
+    _output_warehouse.outputStep(OUTPUT_FAILED);
   }
 
   postSolve();
@@ -410,7 +407,7 @@ Transient::endStep(Real input_time)
     _problem.computeIndicatorsAndMarkers();
 
     // Perform the output of the current time step
-    _output_warehouse.outputStep();
+    _output_warehouse.outputStep(OUTPUT_TIMESTEP_END);
 
     // Output MultiApps if we were doing Picard iterations
     if (_picard_max_its > 1)
@@ -419,16 +416,10 @@ Transient::endStep(Real input_time)
       _problem.advanceMultiApps(EXEC_TIMESTEP);
     }
 
-    //output \todo{Remove after old output system is removed}
-    if (_time_interval)
-    {
-      //Set the time for the next output interval if we're at or beyond an output interval
-      if (_time + _timestep_tolerance >= _next_interval_output_time)
-      {
-        _next_interval_output_time += _time_interval_output_interval;
-      }
-    }
-  }
+    //output
+    if (_time_interval && (_time + _timestep_tolerance >= _next_interval_output_time))
+      _next_interval_output_time += _time_interval_output_interval;
+   }
 }
 
 Real
@@ -465,7 +456,7 @@ Transient::computeConstrainedDT()
   _unconstrained_dt = dt_cur;
 
   if (_verbose)
-    Moose::out << diag.str();
+    _console << diag.str();
 
   diag.str("");
   diag.clear();
@@ -551,7 +542,7 @@ Transient::computeConstrainedDT()
   }
 
   if (_verbose)
-    Moose::out << diag.str();
+    _console << diag.str();
 
   return dt_cur;
 }
@@ -565,7 +556,8 @@ Transient::getDT()
 bool
 Transient::keepGoing()
 {
-  bool keep_going = true;
+  bool keep_going = !_problem.isSolveTerminationRequested();
+
   // Check for stop condition based upon steady-state check flag:
   if (lastSolveConverged() && _trans_ss_check == true && _time > _ss_tmin)
   {
@@ -578,7 +570,7 @@ Transient::keepGoing()
     // Check current solution relative error norm against steady-state tolerance
     if (ss_relerr_norm < _ss_check_tol)
     {
-      Moose::out << "Steady-State Solution Achieved at time: " << _time << std::endl;
+      _console << "Steady-State Solution Achieved at time: " << _time << std::endl;
       //Output last solve if not output previously by forcing it
       keep_going = false;
     }
@@ -587,7 +579,7 @@ Transient::keepGoing()
       // Update solution norm for next time step
       _old_time_solution_norm = new_time_solution_norm;
       // Print steady-state relative error norm
-      Moose::out << "Steady-State Relative Differential Norm: " << ss_relerr_norm << std::endl;
+      _console << "Steady-State Relative Differential Norm: " << ss_relerr_norm << std::endl;
     }
   }
 
@@ -600,7 +592,7 @@ Transient::keepGoing()
 
   if (!lastSolveConverged() && _abort)
   {
-    Moose::out << "Aborting as solve did not converge and input selected to abort" << std::endl;
+    _console << "Aborting as solve did not converge and input selected to abort" << std::endl;
     keep_going = false;
   }
 
@@ -688,7 +680,7 @@ Transient::setupTimeIntegrator()
 std::string
 Transient::getTimeStepperName()
 {
-  if (_time_stepper != NULL)
+  if (_time_stepper.get())
     return demangle(typeid(*_time_stepper).name());
   else
     return std::string();

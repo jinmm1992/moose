@@ -31,40 +31,22 @@ InputParameters validParams<TableOutput>()
   MooseEnum pps_fit_mode(FormattedTable::getWidthModes());
 
   // Base class parameters
-  InputParameters params = validParams<PetscOutput>();
+  InputParameters params = validParams<AdvancedOutput<FileOutput> >();
+  params += AdvancedOutput<FileOutput>::enableOutputTypes("postprocessor scalar vector_postprocessor");
 
-  // Suppressing the output of nodal and elemental variables disables this type of output
-  params.suppressParameter<bool>("output_elemental_variables");
-  params.suppressParameter<bool>("output_nodal_variables");
-  params.suppressParameter<bool>("elemental_as_nodal");
-  params.suppressParameter<bool>("scalar_as_nodal");
-  params.suppressParameter<bool>("output_input");
+  // Add option for appending file on restart
+  params.addParam<bool>("append_restart", false, "Append existing file on restart");
 
   return params;
 }
 
 TableOutput::TableOutput(const std::string & name, InputParameters parameters) :
-    PetscOutput(name, parameters),
-    _postprocessor_table(declareRestartableData<FormattedTable>("postprocessor_table")),
-    _scalar_table(declareRestartableData<FormattedTable>("scalar_table")),
-    _all_data_table(declareRestartableData<FormattedTable>("all_data_table"))
+    AdvancedOutput<FileOutput>(name, parameters),
+    _tables_restartable(getParam<bool>("append_restart")),
+    _postprocessor_table(_tables_restartable ? declareRestartableData<FormattedTable>("postprocessor_table") : declareRecoverableData<FormattedTable>("postprocessor_table")),
+    _scalar_table(_tables_restartable ? declareRestartableData<FormattedTable>("scalar_table") : declareRecoverableData<FormattedTable>("scalar_table")),
+    _all_data_table(_tables_restartable ? declareRestartableData<FormattedTable>("all_data_table") : declareRecoverableData<FormattedTable>("all_data_table"))
 {
-}
-
-TableOutput::~TableOutput()
-{
-}
-
-void
-TableOutput::outputNodalVariables()
-{
-  mooseError("Nodal nonlinear variable output not supported by TableOutput output class");
-}
-
-void
-TableOutput::outputElementalVariables()
-{
-  mooseError("Elemental nonlinear variable output not supported by TableOutput output class");
 }
 
 void

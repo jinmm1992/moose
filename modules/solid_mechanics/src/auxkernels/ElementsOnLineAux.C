@@ -10,7 +10,7 @@ InputParameters validParams<ElementsOnLineAux>()
   params.addRequiredParam<Real>("dist_tol", "Tolerance for distance between element and line");
   params.addParam<int>("line_id", 1, "ID of the line along which to pick elements");
 
-  params.set<MooseEnum>("execute_on") = "initial";
+  params.set<MultiMooseEnum>("execute_on") = "initial";
 
   return params;
 }

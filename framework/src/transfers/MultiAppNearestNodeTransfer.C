@@ -12,8 +12,6 @@
 /*            See COPYRIGHT for full restrictions               */
 /****************************************************************/
 
-#define NOTFOUND -999999
-
 #include "MultiAppNearestNodeTransfer.h"
 
 // Moose
@@ -34,7 +32,7 @@ InputParameters validParams<MultiAppNearestNodeTransfer>()
   params.addRequiredParam<VariableName>("source_variable", "The variable to transfer from.");
   params.addParam<bool>("displaced_source_mesh", false, "Whether or not to use the displaced mesh for the source mesh.");
   params.addParam<bool>("displaced_target_mesh", false, "Whether or not to use the displaced mesh for the target mesh.");
-  params.addParam<bool>("fixed_meshes", false, "Set to true when the meshes are not changing (ie, no moviement or adaptivity).  This will cache nearest node neighbors to greatly speed up the transfer.");
+  params.addParam<bool>("fixed_meshes", false, "Set to true when the meshes are not changing (ie, no movement or adaptivity).  This will cache nearest node neighbors to greatly speed up the transfer.");
 
   return params;
 }
@@ -52,9 +50,15 @@ MultiAppNearestNodeTransfer::MultiAppNearestNodeTransfer(const std::string & nam
 }
 
 void
+MultiAppNearestNodeTransfer::initialSetup()
+{
+  variableIntegrityCheck(_to_var_name);
+}
+
+void
 MultiAppNearestNodeTransfer::execute()
 {
-  Moose::out << "Beginning NearestNodeTransfer " << _name << std::endl;
+  _console << "Beginning NearestNodeTransfer " << _name << std::endl;
 
   switch (_direction)
   {
@@ -100,9 +104,6 @@ MultiAppNearestNodeTransfer::execute()
 
           // Loop over the master nodes and set the value of the variable
           System * to_sys = find_sys(_multi_app->appProblem(i)->es(), _to_var_name);
-
-          if (!to_sys)
-            mooseError("Cannot find variable "<<_to_var_name<<" for "<<_name<<" Transfer");
 
           unsigned int sys_num = to_sys->number();
           unsigned int var_num = to_sys->variable_number(_to_var_name);
@@ -341,7 +342,7 @@ MultiAppNearestNodeTransfer::execute()
           for (; to_node_it != to_node_end; ++to_node_it)
           {
             Node * to_node = *to_node_it;
-            unsigned int to_node_id = to_node->id();
+            dof_id_type to_node_id = to_node->id();
 
             Real current_distance = 0;
 
@@ -389,7 +390,7 @@ MultiAppNearestNodeTransfer::execute()
           for (; to_elem_it != to_elem_end; ++to_elem_it)
           {
             Elem * to_elem = *to_elem_it;
-            unsigned int to_elem_id = to_elem->id();
+            dof_id_type to_elem_id = to_elem->id();
 
             Point actual_position = to_elem->centroid()-app_position;
 
@@ -539,7 +540,7 @@ MultiAppNearestNodeTransfer::execute()
     }
   }
 
-  Moose::out << "Finished NearestNodeTransfer " << _name << std::endl;
+  _console << "Finished NearestNodeTransfer " << _name << std::endl;
 }
 
 Node * MultiAppNearestNodeTransfer::getNearestNode(const Point & p, Real & distance, const MeshBase::const_node_iterator & nodes_begin, const MeshBase::const_node_iterator & nodes_end)
@@ -549,13 +550,12 @@ Node * MultiAppNearestNodeTransfer::getNearestNode(const Point & p, Real & dista
 
   for (MeshBase::const_node_iterator node_it = nodes_begin; node_it != nodes_end; ++node_it)
   {
-    Node & node = *(*node_it);
-    Real current_distance = (p-node).size();
+    Real current_distance = (p-*(*node_it)).size();
 
     if (current_distance < distance)
     {
       distance = current_distance;
-      nearest = &node;
+      nearest = *node_it;
     }
   }
 

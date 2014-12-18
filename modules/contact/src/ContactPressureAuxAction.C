@@ -11,7 +11,7 @@ static unsigned int counter = 0;
 template<>
 InputParameters validParams<ContactPressureAuxAction>()
 {
-  MooseEnum orders("FIRST, SECOND, THIRD, FOURTH", "FIRST");
+  MooseEnum orders("FIRST SECOND THIRD FOURTH", "FIRST");
 
   InputParameters params = validParams<Action>();
   params.addRequiredParam<BoundaryName>("master", "The master surface");
@@ -60,15 +60,9 @@ ContactPressureAuxAction::act()
     name << "_contact_pressure_";
     name << counter++;
 
-    params.set<MooseEnum>("execute_on") = "jacobian";
-    _problem->addAuxKernel("ContactPressureAux", name.str(), params);
-
-    params.set<MooseEnum>("execute_on") = "timestep";
-    name << "_timestep";
-    _problem->addAuxKernel("ContactPressureAux", name.str(), params);
-
-    params.set<MooseEnum>("execute_on") = "timestep_begin";
-    name << "_timestep_begin";
+    MultiMooseEnum execute_options(SetupInterface::getExecuteOptions());
+    execute_options = "jacobian timestep timestep_begin";
+    params.set<MultiMooseEnum>("execute_on") = execute_options;
     _problem->addAuxKernel("ContactPressureAux", name.str(), params);
   }
 }

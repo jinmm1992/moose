@@ -72,10 +72,6 @@
     variable = u
     function = exact_fn
   [../]
-
-  [./res]
-    type = Residual
-  [../]
 []
 
 [Executioner]
@@ -91,6 +87,5 @@
 
 [Outputs]
   output_initial = true
-  console = true
   exodus = true
 []

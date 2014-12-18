@@ -14,7 +14,6 @@
 #include "HeatConductionMaterial.h"
 #include "AnisoHeatConductionMaterial.h"
 #include "HeatConductionBC.h"
-#include "BulkCoolantBC.h"
 #include "ThermalContactAuxBCsAction.h"
 #include "ThermalContactAuxVarsAction.h"
 #include "ThermalContactBCsAction.h"
@@ -28,6 +27,9 @@ template<>
 InputParameters validParams<HeatConductionApp>()
 {
   InputParameters params = validParams<MooseApp>();
+  params.set<bool>("use_legacy_uo_initialization") = true;
+  params.set<bool>("use_legacy_uo_aux_computation") = false;
+
   return params;
 }
 
@@ -63,7 +65,6 @@ HeatConductionApp::registerObjects(Factory & factory)
   registerBoundaryCondition(HeatConductionBC);
   registerBoundaryCondition(ConvectiveFluxFunction);
   registerBoundaryCondition(GapHeatTransfer);
-  registerBoundaryCondition(BulkCoolantBC);
   registerBoundaryCondition(CoupledConvectiveFlux);
   registerMaterial(GapConductance);
   registerMaterial(HeatConductionMaterial);

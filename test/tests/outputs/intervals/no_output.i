@@ -48,11 +48,8 @@
 []
 
 [Outputs]
-  console = true
   [./exodus]
     type = Exodus
-    output_initial = false
-    output_intermediate = false
-    output_final = false
+    output_on = none
   [../]
 []

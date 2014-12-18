@@ -69,6 +69,9 @@
 #include "VectorNeumannBC.h"
 #include "WeakGradientBC.h"
 #include "DiffusionFluxBC.h"
+#include "PostprocessorDirichletBC.h"
+#include "OneDEqualValueConstraintBC.h"
+
 // auxkernels
 #include "ConstantAux.h"
 #include "FunctionAux.h"
@@ -81,6 +84,7 @@
 #include "MaterialRealAux.h"
 #include "MaterialRealVectorValueAux.h"
 #include "MaterialRealTensorValueAux.h"
+#include "MaterialStdVectorAux.h"
 #include "DebugResidualAux.h"
 #include "BoundsAux.h"
 #include "SpatialUserObjectAux.h"
@@ -89,6 +93,8 @@
 #include "ConstantScalarAux.h"
 #include "QuotientAux.h"
 #include "NormalizationAux.h"
+#include "VariableGradientComponent.h"
+#include "LinearCombinationAux.h"
 
 // dirac kernels
 #include "ConstantPointSource.h"
@@ -177,6 +183,7 @@
 #include "NodalExtremeValue.h"
 #include "ElementExtremeValue.h"
 #include "DifferencePostprocessor.h"
+#include "NumPicardIterations.h"
 
 // vector PPS
 #include "ConstantVectorPostprocessor.h"
@@ -184,6 +191,8 @@
 #include "SideValueSampler.h"
 #include "PointValueSampler.h"
 #include "LineValueSampler.h"
+#include "VectorOfPostprocessors.h"
+#include "ElementsAlongLine.h"
 
 // user objects
 #include "LayeredIntegral.h"
@@ -197,11 +206,15 @@
 #include "NodalNormalsCorner.h"
 #include "NodalNormalsPreprocessor.h"
 #include "SolutionUserObject.h"
+#ifdef LIBMESH_HAVE_FPARSER
+#include "Terminator.h"
+#endif
 
 // preconditioners
 #include "PhysicsBasedPreconditioner.h"
 #include "FiniteDifferencePreconditioner.h"
 #include "SingleMatrixPreconditioner.h"
+
 #include "SplitBasedPreconditioner.h"
 #include "Split.h"
 #include "ContactSplit.h"
@@ -223,12 +236,13 @@
 
 // ScalarKernels
 #include "ODETimeDerivative.h"
+#include "FunctionScalarAux.h"
+#include "NodalEqualValueConstraint.h"
 
 // indicators
 #include "AnalyticalIndicator.h"
 #include "LaplacianJumpIndicator.h"
 #include "GradientJumpIndicator.h"
-#include "FluxJumpIndicator.h"
 
 // markers
 #include "ErrorToleranceMarker.h"
@@ -262,6 +276,7 @@
 // MultiApps
 #include "TransientMultiApp.h"
 #include "FullSolveMultiApp.h"
+#include "AutoPositionsMultiApp.h"
 
 // Transfers
 #ifdef LIBMESH_HAVE_DTK
@@ -331,16 +346,17 @@
 #include "AddTransferAction.h"
 #include "AddNodalNormalsAction.h"
 #include "SetupTimeStepperAction.h"
-#include "RecoverBaseAction.h"
 #include "SetupPredictorAction.h"
 #include "AddMortarInterfaceAction.h"
 #include "SetupPostprocessorDataAction.h"
-#include "PerfLogOutputAction.h"
 #include "MaterialOutputAction.h"
-#include "CheckMaterialOutputAction.h"
+#include "CheckOutputAction.h"
+#include "SetupRecoverFileBaseAction.h"
 
 // Outputs
+#ifdef LIBMESH_HAVE_EXODUS_API
 #include "Exodus.h"
+#endif
 #include "Nemesis.h"
 #include "Console.h"
 #include "CSV.h"
@@ -349,9 +365,12 @@
 #include "XDA.h"
 #include "GMVOutput.h"
 #include "Tecplot.h"
-#include "GNUPlot.h"
+#include "Gnuplot.h"
 #include "SolutionHistory.h"
-#include "DebugOutput.h"
+#include "MaterialPropertyDebugOutput.h"
+#include "VariableResidualNormsDebugOutput.h"
+#include "TopResidualDebugOutput.h"
+#include "DOFMapOutput.h"
 
 namespace Moose {
 
@@ -408,6 +427,8 @@ registerObjects(Factory & factory)
   registerBoundaryCondition(VectorNeumannBC);
   registerBoundaryCondition(WeakGradientBC);
   registerBoundaryCondition(DiffusionFluxBC);
+  registerBoundaryCondition(PostprocessorDirichletBC);
+  registerBoundaryCondition(OneDEqualValueConstraintBC);
 
   // dirac kernels
   registerDiracKernel(ConstantPointSource);
@@ -424,6 +445,7 @@ registerObjects(Factory & factory)
   registerAux(MaterialRealAux);
   registerAux(MaterialRealVectorValueAux);
   registerAux(MaterialRealTensorValueAux);
+  registerAux(MaterialStdVectorAux);
   registerAux(DebugResidualAux);
   registerAux(BoundsAux);
   registerAux(SpatialUserObjectAux);
@@ -432,6 +454,9 @@ registerObjects(Factory & factory)
   registerAux(ConstantScalarAux);
   registerAux(QuotientAux);
   registerAux(NormalizationAux);
+  registerAux(FunctionScalarAux);
+  registerAux(VariableGradientComponent);
+  registerAux(LinearCombinationAux);
 
   // Initial Conditions
   registerInitialCondition(ConstantIC);
@@ -518,6 +543,7 @@ registerObjects(Factory & factory)
   registerPostprocessor(NodalExtremeValue);
   registerPostprocessor(ElementExtremeValue);
   registerPostprocessor(DifferencePostprocessor);
+  registerPostprocessor(NumPicardIterations);
 
   // vector PPS
   registerVectorPostprocessor(ConstantVectorPostprocessor);
@@ -525,6 +551,8 @@ registerObjects(Factory & factory)
   registerVectorPostprocessor(SideValueSampler);
   registerVectorPostprocessor(PointValueSampler);
   registerVectorPostprocessor(LineValueSampler);
+  registerVectorPostprocessor(VectorOfPostprocessors);
+  registerVectorPostprocessor(ElementsAlongLine);
 
   // user objects
   registerUserObject(LayeredIntegral);
@@ -538,6 +566,9 @@ registerObjects(Factory & factory)
   registerUserObject(NodalNormalsCorner);
   registerUserObject(NodalNormalsEvaluator);
   registerUserObject(SolutionUserObject);
+#ifdef LIBMESH_HAVE_FPARSER
+  registerUserObject(Terminator);
+#endif
 
   // preconditioners
   registerNamedPreconditioner(PhysicsBasedPreconditioner, "PBP");
@@ -560,12 +591,12 @@ registerObjects(Factory & factory)
 
   // Scalar kernels
   registerScalarKernel(ODETimeDerivative);
+  registerScalarKernel(NodalEqualValueConstraint);
 
   // indicators
   registerIndicator(AnalyticalIndicator);
   registerIndicator(LaplacianJumpIndicator);
   registerIndicator(GradientJumpIndicator);
-  registerIndicator(FluxJumpIndicator);
 
   // markers
   registerMarker(ErrorToleranceMarker);
@@ -584,6 +615,7 @@ registerObjects(Factory & factory)
   // MultiApps
   registerMultiApp(TransientMultiApp);
   registerMultiApp(FullSolveMultiApp);
+  registerMultiApp(AutoPositionsMultiApp);
 
   // time steppers
   registerTimeStepper(ConstantDT);
@@ -638,9 +670,12 @@ registerObjects(Factory & factory)
   registerOutput(XDA);
   registerNamedOutput(GMVOutput, "GMV");
   registerOutput(Tecplot);
-  registerOutput(GNUPlot);
+  registerOutput(Gnuplot);
   registerOutput(SolutionHistory);
-  registerOutput(DebugOutput);
+  registerOutput(MaterialPropertyDebugOutput);
+  registerOutput(VariableResidualNormsDebugOutput);
+  registerOutput(TopResidualDebugOutput);
+  registerNamedOutput(DOFMapOutput, "DOFMap");
 
   registered = true;
 }
@@ -709,14 +744,16 @@ addActionTypes(Syntax & syntax)
   registerMooseObjectTask("add_multi_app",                MultiApp,               false);
   registerMooseObjectTask("add_transfer",                 Transfer,               false);
 
-  registerMooseObjectTask("add_output",                   Output,             false);
+  registerMooseObjectTask("add_output",                   Output,                 false);
+
+  registerTask("common_output", true);
+  registerTask("setup_recover_file_base", true);
 
   registerTask("add_feproblem", false);
   registerTask("add_bounds_vectors", false);
   registerTask("add_periodic_bc", false);
   registerTask("add_aux_variable", false);
   registerTask("add_variable", false);
-  registerTask("recover_base", false);
 
   registerTask("prepare_mesh", false);
   registerTask("setup_mesh_complete", false);  // calls prepare
@@ -739,7 +776,6 @@ addActionTypes(Syntax & syntax)
   registerTask("setup_time_periods", true);
   registerTask("setup_adaptivity", false);
   registerTask("meta_action", false);
-  registerTask("initial_mesh_refinement", false);
   registerTask("setup_debug", false);
   registerTask("setup_residual_debug", false);
   registerTask("setup_oversampling", false);
@@ -751,11 +787,10 @@ addActionTypes(Syntax & syntax)
   registerTask("setup_function_complete", false);
   registerTask("setup_variable_complete", false);
   registerTask("ready_to_init", true);
-  registerTask("setup_pps_complete", false);
 
-  registerTask("perf_log_output", true);
+  // Output related actions
   registerTask("setup_material_output", true);
-  registerTask("check_material_output", true);
+  registerTask("check_output", true);
 
   /**************************/
   /****** Dependencies ******/
@@ -770,8 +805,9 @@ addActionTypes(Syntax & syntax)
    */
   syntax.addDependencySets(
 "(meta_action)"
+"(common_output)"
 "(set_global_params)"
-"(recover_base)"
+"(setup_recover_file_base)"
 "(check_copy_nodal_vars)"
 "(setup_mesh)"
 "(prepare_mesh)"
@@ -806,16 +842,15 @@ addActionTypes(Syntax & syntax)
 "(add_multi_app)"
 "(add_transfer)"
 "(copy_nodal_vars, copy_nodal_aux_vars)"
-"(initial_mesh_refinement)"
 "(add_material)"
 "(setup_material_output)"
 "(init_problem)"
+"(setup_debug)"
+"(add_output)"
 "(add_postprocessor)"
 "(add_vector_postprocessor)"
-"(setup_pps_complete)"
-"(setup_debug)"
-"(add_aux_kernel, add_bc, add_damper, add_dirac_kernel, add_kernel, add_dg_kernel, add_scalar_kernel, add_aux_scalar_kernel, add_indicator, add_marker, add_output)"
-"(perf_log_output, check_material_output)"
+"(add_aux_kernel, add_bc, add_damper, add_dirac_kernel, add_kernel, add_dg_kernel, add_scalar_kernel, add_aux_scalar_kernel, add_indicator, add_marker)"
+"(check_output)"
 "(check_integrity)"
 );
 
@@ -852,7 +887,6 @@ registerActions(Syntax & syntax, ActionFactory & action_factory)
 {
   registerAction(SetupPostprocessorDataAction, "setup_postprocessor_data");
 
-  registerAction(RecoverBaseAction, "recover_base");
   registerAction(SetupMeshAction, "setup_mesh");
   registerAction(SetupMeshCompleteAction, "prepare_mesh");
   registerAction(AddMeshModifierAction, "add_mesh_modifier");
@@ -867,17 +901,12 @@ registerActions(Syntax & syntax, ActionFactory & action_factory)
   registerAction(DetermineSystemType, "determine_system_type");
   registerAction(CreateProblemAction, "create_problem");
   registerAction(AddOutputAction, "add_output");
-  registerAction(CommonOutputAction, "meta_action");
+  registerAction(CommonOutputAction, "common_output");
+  registerAction(SetupRecoverFileBaseAction, "setup_recover_file_base");
   registerAction(GlobalParamsAction, "set_global_params");
   registerAction(SetupPredictorAction, "setup_predictor");
-
-  /* The display of performance long is controlled by the Console outputter, if there is not one present
-     logging must be disable externally from the object, this action does this */
-  registerAction(PerfLogOutputAction, "perf_log_output");
-
-  // Enable automatic output of material properties
   registerAction(MaterialOutputAction, "setup_material_output");
-  registerAction(CheckMaterialOutputAction, "check_material_output");
+  registerAction(CheckOutputAction, "check_output");
 
   /// Variable/AuxVariable Actions
   registerAction(AddVariableAction, "add_variable");
@@ -972,12 +1001,8 @@ swapLibMeshComm(MPI_Comm new_comm)
 void
 enableFPE(bool on)
 {
-#ifdef DEBUG
-  libMesh::enableFPE(on);
-#else
-  if (__trap_fpe)
+  if (_trap_fpe)
     libMesh::enableFPE(on);
-#endif
 }
 
 // Currently there are 6 exec types (See Moose.h)
@@ -998,6 +1023,19 @@ const std::vector<ExecFlagType> exec_types = populateExecTypes();
 
 PerfLog setup_perf_log("Setup");
 
-bool __trap_fpe = false;
+/**
+ * Initialize global variables
+ */
+#ifdef DEBUG
+bool _trap_fpe = true;
+#else
+bool _trap_fpe = false;
+#endif
+
+bool _color_console = true;
+
+bool _warnings_are_errors = false;
+
+bool _throw_on_error = false;
 
 } // namespace Moose

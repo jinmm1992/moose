@@ -45,8 +45,6 @@ Steady::Steady(const std::string & name, InputParameters parameters) :
 
 Steady::~Steady()
 {
-  // This problem was built by the Factory and needs to be released by this destructor
-  delete &_problem;
 }
 
 Problem &
@@ -60,7 +58,7 @@ Steady::init()
 {
   if (_app.isRecovering())
   {
-    Moose::out<<"\nCannot recover steady solves!\nExiting...\n"<<std::endl;
+    _console << "\nCannot recover steady solves!\nExiting...\n" << std::endl;
     return;
   }
 
@@ -68,7 +66,7 @@ Steady::init()
   _problem.initialSetup();
 
   Moose::setup_perf_log.push("Output Initial Condition","Setup");
-  _output_warehouse.outputInitial();
+  _output_warehouse.outputStep(OUTPUT_INITIAL);
   Moose::setup_perf_log.pop("Output Initial Condition","Setup");
 }
 
@@ -93,7 +91,6 @@ Steady::execute()
 #endif //LIBMESH_ENABLE_AMR
     _problem.computeUserObjects(EXEC_TIMESTEP_BEGIN, UserObjectWarehouse::PRE_AUX);
     preSolve();
-    _problem.updateMaterials();
     _problem.timestepSetup();
     _problem.computeUserObjects(EXEC_TIMESTEP_BEGIN, UserObjectWarehouse::POST_AUX);
     _problem.solve();
@@ -106,7 +103,7 @@ Steady::execute()
     _problem.computeUserObjects(EXEC_TIMESTEP, UserObjectWarehouse::POST_AUX);
     _problem.computeIndicatorsAndMarkers();
 
-    _output_warehouse.outputStep();
+    _output_warehouse.outputStep(OUTPUT_TIMESTEP_END);
 
 #ifdef LIBMESH_ENABLE_AMR
     if (r_step != steps)

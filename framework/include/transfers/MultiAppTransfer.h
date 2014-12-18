@@ -18,6 +18,7 @@
 #include "Transfer.h"
 #include "MultiApp.h"
 #include "MooseEnum.h"
+#include "MooseTypes.h"
 
 class MultiAppTransfer;
 
@@ -45,18 +46,18 @@ public:
   };
 
   /// Used to construct InputParameters
-  static MooseEnum directions() { return MooseEnum("to_multiapp,from_multiapp"); }
+  static MooseEnum directions() { return MooseEnum("to_multiapp from_multiapp"); }
 
   /// The direction this Transfer is going in
   int direction() { return _direction; }
 
   /**
-   * MultiApp Transfers need to execute when the MultiApp is executed.
-   * Depending on the direction they will either get executed just before or just after the MultiApp is executed.
-   *
-   * @return When this Transfer will be executed.
+   * Utility to verify that the vEariable in the destination system exists.
    */
-  virtual int executeOn() { return _multi_app->executeOn(); }
+  void variableIntegrityCheck(const AuxVariableName & var_name) const;
+
+  /// Return the MultiApp that this transfer belongs to
+  const MultiApp * getMultiApp() const { return _multi_app; }
 
 protected:
   /// The MultiApp this Transfer is transferring data to or from

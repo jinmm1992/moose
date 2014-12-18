@@ -1,6 +1,110 @@
 #!/usr/bin/env python
-from tempfile import TemporaryFile
-import os, sys, re, socket, time, pickle, csv, uuid, subprocess, argparse, decimal, select
+from tempfile import TemporaryFile, SpooledTemporaryFile
+import os, sys, re, socket, time, pickle, csv, uuid, subprocess, argparse, decimal, select, platform
+
+class LLDB:
+  def __init__(self):
+    self.debugger = lldb.SBDebugger.Create()
+    self.command_interpreter = self.debugger.GetCommandInterpreter()
+    self.target = self.debugger.CreateTargetWithFileAndArch(None, None)
+    self.listener = lldb.SBListener("event_listener")
+    self.error = lldb.SBError()
+
+  def __del__(self):
+    lldb.SBDebugger.Destroy(self.debugger)
+
+  def _parseStackTrace(self, gibberish):
+    return gibberish
+
+  def _run_commands(self, commands):
+    tmp_text = ''
+    return_obj = lldb.SBCommandReturnObject()
+    for command in commands:
+      self.command_interpreter.HandleCommand(command, return_obj)
+      if return_obj.Succeeded():
+        if command == 'process status':
+          tmp_text += '\n########################################################\n## Process Status:\n##\n'
+          tmp_text += return_obj.GetOutput()
+        elif command == 'bt':
+          tmp_text += '\n########################################################\n## Backtrace:\n##\n'
+          tmp_text += return_obj.GetOutput()
+    return tmp_text
+
+  def getStackTrace(self, pid):
+    event = lldb.SBEvent()
+    lldb_results = ''
+    state = 0
+    attach_info = lldb.SBAttachInfo(int(pid))
+    process = self.target.Attach(attach_info, self.error)
+    process.GetBroadcaster().AddListener(self.listener, lldb.SBProcess.eBroadcastBitStateChanged)
+    done = False
+    while not done:
+      if self.listener.WaitForEvent(lldb.UINT32_MAX, event):
+        state = lldb.SBProcess.GetStateFromEvent(event)
+        if state == lldb.eStateExited:
+          done = True
+        elif state == lldb.eStateStopped:
+          lldb_results = self._run_commands(['process status', 'bt', 'cont'])
+          done = True
+        elif state == lldb.eStateRunning:
+          self._run_commands(['process interrupt'])
+      if state == lldb.eStateCrashed or state == lldb.eStateInvalid or state == lldb.eStateExited:
+        return 'Binary exited before sample could be taken'
+      time.sleep(0.03)
+
+    # Due to some strange race condition we have to wait until eState is running
+    # before we can pass the 'detach, quit' command. Why we can not do this all in
+    # one go... bug?
+    done = False
+    while not done:
+      if self.listener.WaitForEvent(lldb.UINT32_MAX, event):
+        state = lldb.SBProcess.GetStateFromEvent(event)
+        if state == lldb.eStateRunning:
+          self._run_commands(['detach', 'quit'])
+          done = True
+      if state == lldb.eStateCrashed or state == lldb.eStateInvalid or state == lldb.eStateExited:
+        return 'Binary exited before sample could be taken'
+      time.sleep(0.03)
+    return self._parseStackTrace(lldb_results)
+
+class GDB:
+  def _parseStackTrace(self, gibberish):
+    not_gibberish = re.findall(r'\(gdb\) (#.*)\(gdb\)', gibberish, re.DOTALL)
+    if len(not_gibberish) != 0:
+      return not_gibberish[0]
+    else:
+      return 'Stack Trace failed:', gibberish
+
+  def _waitForResponse(self, wait=True):
+    while wait:
+      self.gdb_stdout.seek(self.last_position)
+      for line in self.gdb_stdout:
+        if line == '(gdb) ':
+          self.last_position = self.gdb_stdout.tell()
+          return True
+      time.sleep(0.05)
+    time.sleep(0.05)
+    return True
+
+  def getStackTrace(self, pid):
+    gdb_commands = [ 'attach ' + pid + '\n', 'set verbose off\n', 'thread\n', 'apply\n', 'all\n', 'bt\n', 'quit\n', 'y\n' ]
+    self.gdb_stdout = SpooledTemporaryFile()
+    self.last_position = 0
+    gdb_process = subprocess.Popen([which('gdb'), '-nx'], stdin=subprocess.PIPE, stdout=self.gdb_stdout, stderr=self.gdb_stdout)
+    while gdb_process.poll() == None:
+      for command in gdb_commands:
+        if command == gdb_commands[-1]:
+          gdb_commands = []
+        elif self._waitForResponse():
+          # I have seen GDB exit out from under us
+          try:
+            gdb_process.stdin.write(command)
+          except:
+            pass
+    self.gdb_stdout.seek(0)
+    stack_trace = self._parseStackTrace(self.gdb_stdout.read())
+    self.gdb_stdout.close()
+    return stack_trace
 
 class Server:
   def __init__(self, arguments):
@@ -493,21 +597,16 @@ machine_id is supplied by the client class. This allows for multiple agents if d
     return 0
 
   def _getStack(self):
-    # A quick way to safely check for the avilability of needed tools
-    self._verifyCommand(['pstack'])
-
-    tmp_pids = self._getPIDs()
-    if self._darwin == True:
-      return ''
+    if self._darwin() == True:
+      stack_trace = LLDB()
     else:
-      # We are Linux
-      if tmp_pids != {}:
-        lowest_pid = sorted([x for x in tmp_pids.keys()])[0]
-        # This is very expensive on some systems (~1 second). Hence we only do this once with the first item found
-        tmp_proc = subprocess.Popen([which('pstack'), str(lowest_pid)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return tmp_proc.communicate()[0]
-      else:
-        return ''
+      stack_trace = GDB()
+    tmp_pids = self._getPIDs()
+    if tmp_pids != {}:
+      last_pid = sorted([x for x in tmp_pids.keys()])[-1]
+      return stack_trace.getStackTrace(str(last_pid))
+    else:
+      return ''
 
   def _getPIDs(self):
     pid_list = {}
@@ -901,6 +1000,15 @@ def verifyArgs(args):
     else:
       args.outfile = [os.getcwd() + '/' + args.run[0].replace('..', '').replace('/', '').replace(' ', '_') + '.log']
 
+  if args.pstack:
+    if platform.platform(0, 1).split('-')[:-1][0].find('Darwin') != -1:
+      try:
+        import lldb
+      except ImportError:
+        print 'Unable to import lldb. The lldb API is now supplied by \nXcode but not automatically set in your PYTHONPATH. \nPlease search the internet for how to do this if you \nwish to use --pstack on Mac OS X.\n\nNote: If you installed Xcode to the default location of \n/Applications, you should only have to perform the following:\n\n\texport PYTHONPATH=/Applications/Xcode.app/Contents/SharedFrameworks/LLDB.framework/Resources/Python:$PYTHONPATH\n'
+        sys.exit(1)
+    else:
+      results = which('gdb')
   return args
 
 def parseArguments(args=None):
@@ -943,4 +1051,3 @@ if __name__ == '__main__':
     MemoryPlotter(args)
     sys.exit(0)
   Server(args)
-

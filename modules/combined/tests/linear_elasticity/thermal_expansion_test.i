@@ -45,8 +45,8 @@
   [../]
 []
 
-[TensorMechanics]
-  [./solid]
+[Kernels]
+  [./TensorMechanics]
     disp_x = disp_x
     disp_y = disp_y
   [../]
@@ -56,22 +56,22 @@
   [./matl_s11]
     type = RankTwoAux
     rank_two_tensor = stress
-    index_i = 1
-    index_j = 1
+    index_i = 0
+    index_j = 0
     variable = s11_aux
   [../]
   [./matl_s12]
     type = RankTwoAux
     rank_two_tensor = stress
-    index_i = 1
-    index_j = 2
+    index_i = 0
+    index_j = 1
     variable = s12_aux
   [../]
   [./matl_s22]
     type = RankTwoAux
     rank_two_tensor = stress
-    index_i = 2
-    index_j = 2
+    index_i = 1
+    index_j = 1
     variable = s22_aux
   [../]
 []
@@ -82,10 +82,10 @@
     block = 0
     disp_x = disp_x
     disp_y = disp_y
-    all_21 = false
+    fill_method = symmetric9
     C_ijkl = '1e6 0 0 1e6 0 1e6 .5e6 .5e6 .5e6'
     thermal_expansion_coeff = 1.0e-6
-    Temp = 400
+    T = 400
   [../]
 []
 

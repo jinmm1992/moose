@@ -1,8 +1,8 @@
 [Mesh]
   type = GeneratedMesh
   dim = 2
-  nx = 8
-  ny = 8
+  nx = 25
+  ny = 25
   nz = 0
   xmin = 0
   xmax = 50
@@ -11,25 +11,25 @@
   zmin = 0
   zmax = 50
   elem_type = QUAD4
-
-  uniform_refine = 1
 []
 
 [Variables]
-  active = 'c'
-
   [./c]
     order = THIRD
     family = HERMITE
-    [./InitialCondition]
-      type = SmoothCircleIC
-      x1 = 25.0
-      y1 = 25.0
-      radius = 6.0
-      invalue = 1.0
-      outvalue = -0.8
-      int_width = 0.0 #4.0
-    [../]
+  [../]
+[]
+
+[ICs]
+  [./c]
+    type = SmoothCircleIC
+    variable = c
+    x1 = 25.0
+    y1 = 25.0
+    radius = 6.0
+    invalue = 1.0
+    outvalue = -0.8
+    int_width = 4.0
   [../]
 []
 
@@ -101,27 +101,18 @@
   nl_rel_tol = 5.0e-14
 
   start_time = 0.0
-  num_steps = 2
+  num_steps = 1
   dt = 2.0
-
-  [./Adaptivity]
-    initial_adaptivity = 1
-    error_estimator = LaplacianErrorEstimator
-    refine_fraction = 0.8
-    coarsen_fraction = 0.05
-    max_h_level = 2
-  [../]
 []
 
 [Outputs]
   file_base = circle
   output_initial = true
   exodus = true
-  [./oversampled]
+  [./circle_oversample]
     type = Exodus
-    oversample = true
+    file_base = circle_oversample
     refinements = 3
-    append_oversample = true
   [../]
   [./console]
     type = Console
@@ -129,5 +120,3 @@
     linear_residuals = true
   [../]
 []
-
-

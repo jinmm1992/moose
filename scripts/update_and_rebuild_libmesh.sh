@@ -2,7 +2,17 @@
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-export LIBMESH_DIR=$SCRIPT_DIR/../libmesh/installed
+if [ ! -z "$LIBMESH_DIR" ]; then
+  echo "INFO: LIBMESH_DIR set - overriding default installed path"
+  echo "INFO: No cleaning will be done in specified path"
+  mkdir -p $LIBMESH_DIR
+else
+  export LIBMESH_DIR=$SCRIPT_DIR/../libmesh/installed
+  cd $SCRIPT_DIR/../libmesh
+  rm -rf installed
+  cd - >/dev/null # Make this quiet
+fi
+
 export METHODS=${METHODS:="opt oprof dbg"}
 
 cd $SCRIPT_DIR/..
@@ -20,7 +30,7 @@ fi
 
 cd $SCRIPT_DIR/../libmesh
 
-rm -rf build installed
+rm -rf build
 mkdir build
 cd build
 
@@ -29,6 +39,7 @@ cd build
              --enable-silent-rules \
              --enable-unique-id \
              --disable-warnings \
+             --disable-cxx11 \
              --enable-openmp $*
 
 # let LIBMESH_JOBS be either MOOSE_JOBS, or 1 if MOOSE_JOBS
@@ -36,5 +47,10 @@ cd build
 # with either JOBS if set, or LIBMESH_JOBS.
 LIBMESH_JOBS=${MOOSE_JOBS:-1}
 
-make -j ${JOBS:-$LIBMESH_JOBS}
-make install
+if [ -z "${MOOSE_MAKE}" ]; then
+  make -j ${JOBS:-$LIBMESH_JOBS}
+  make install
+else
+  ${MOOSE_MAKE}
+  ${MOOSE_MAKE} install
+fi

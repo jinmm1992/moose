@@ -22,7 +22,7 @@
 template<>
 InputParameters validParams<GluedContactConstraint>()
 {
-  MooseEnum orders("CONSTANT, FIRST, SECOND, THIRD, FOURTH", "FIRST");
+  MooseEnum orders("CONSTANT FIRST SECOND THIRD FOURTH", "FIRST");
 
   InputParameters params = validParams<SparsityBasedContactConstraint>();
   params.addRequiredParam<BoundaryName>("boundary", "The master boundary");
@@ -50,22 +50,22 @@ InputParameters validParams<GluedContactConstraint>()
 
 GluedContactConstraint::GluedContactConstraint(const std::string & name, InputParameters parameters) :
     SparsityBasedContactConstraint(name, parameters),
-  _component(getParam<unsigned int>("component")),
-  _model(contactModel(getParam<std::string>("model"))),
-  _formulation(contactFormulation(getParam<std::string>("formulation"))),
-  _penalty(getParam<Real>("penalty")),
-  _friction_coefficient(getParam<Real>("friction_coefficient")),
-  _tension_release(getParam<Real>("tension_release")),
-  _updateContactSet(true),
-  _time_last_called(-std::numeric_limits<Real>::max()),
-  _residual_copy(_sys.residualGhosted()),
-  _x_var(isCoupled("disp_x") ? coupled("disp_x") : 99999),
-  _y_var(isCoupled("disp_y") ? coupled("disp_y") : 99999),
-  _z_var(isCoupled("disp_z") ? coupled("disp_z") : 99999),
-  _vars(_x_var, _y_var, _z_var),
-  _nodal_area_var(getVar("nodal_area", 0)),
-  _aux_system( _nodal_area_var->sys() ),
-  _aux_solution( _aux_system.currentSolution() )
+    _component(getParam<unsigned int>("component")),
+    _model(contactModel(getParam<std::string>("model"))),
+    _formulation(contactFormulation(getParam<std::string>("formulation"))),
+    _penalty(getParam<Real>("penalty")),
+    _friction_coefficient(getParam<Real>("friction_coefficient")),
+    _tension_release(getParam<Real>("tension_release")),
+    _updateContactSet(true),
+    _time_last_called(-std::numeric_limits<Real>::max()),
+    _residual_copy(_sys.residualGhosted()),
+    _x_var(isCoupled("disp_x") ? coupled("disp_x") : libMesh::invalid_uint),
+    _y_var(isCoupled("disp_y") ? coupled("disp_y") : libMesh::invalid_uint),
+    _z_var(isCoupled("disp_z") ? coupled("disp_z") : libMesh::invalid_uint),
+    _vars(_x_var, _y_var, _z_var),
+    _nodal_area_var(getVar("nodal_area", 0)),
+    _aux_system(_nodal_area_var->sys()),
+    _aux_solution(_aux_system.currentSolution())
 {
 //  _overwrite_slave_residual = false;
 
@@ -120,10 +120,11 @@ GluedContactConstraint::jacobianSetup()
 void
 GluedContactConstraint::updateContactSet(bool beginning_of_step)
 {
-  std::set<unsigned int> & has_penetrated = _penetration_locator._has_penetrated;
+  std::set<dof_id_type> & has_penetrated = _penetration_locator._has_penetrated;
 
-  std::map<unsigned int, PenetrationInfo *>::iterator it = _penetration_locator._penetration_info.begin();
-  std::map<unsigned int, PenetrationInfo *>::iterator end = _penetration_locator._penetration_info.end();
+  std::map<dof_id_type, PenetrationInfo *>::iterator
+    it  = _penetration_locator._penetration_info.begin(),
+    end = _penetration_locator._penetration_info.end();
 
   for (; it!=end; ++it)
   {
@@ -134,8 +135,8 @@ GluedContactConstraint::updateContactSet(bool beginning_of_step)
       continue;
     }
 
-    const unsigned int slave_node_num = it->first;
-    std::set<unsigned int>::iterator hpit = has_penetrated.find(slave_node_num);
+    const dof_id_type slave_node_num = it->first;
+    std::set<dof_id_type>::iterator hpit = has_penetrated.find(slave_node_num);
 
     if (beginning_of_step)
     {
@@ -158,7 +159,7 @@ GluedContactConstraint::updateContactSet(bool beginning_of_step)
 bool
 GluedContactConstraint::shouldApply()
 {
-  std::set<unsigned int>::iterator hpit = _penetration_locator._has_penetrated.find(_current_node->id());
+  std::set<dof_id_type>::iterator hpit = _penetration_locator._has_penetrated.find(_current_node->id());
   return (hpit != _penetration_locator._has_penetrated.end());
 }
 
@@ -189,7 +190,7 @@ GluedContactConstraint::computeQpResidual(Moose::ConstraintType type)
     {
       PenetrationInfo * pinfo = _penetration_locator._penetration_info[_current_node->id()];
 
-      long int dof_number = _current_node->dof_number(0, _vars(_component), 0);
+      dof_id_type dof_number = _current_node->dof_number(0, _vars(_component), 0);
       Real resid = _residual_copy(dof_number);
 
       pinfo->_contact_force(_component) = -resid;
@@ -225,4 +226,28 @@ GluedContactConstraint::computeQpJacobian(Moose::ConstraintJacobianType type)
   }
 
   return 0;
+}
+
+Real
+GluedContactConstraint::computeQpOffDiagJacobian(Moose::ConstraintJacobianType type, unsigned int /*jvar*/)
+{
+  Real retVal = 0;
+
+  switch (type)
+  {
+    case Moose::SlaveSlave:
+      break;
+    case Moose::SlaveMaster:
+      break;
+    case Moose::MasterSlave:
+    {
+      double slave_jac = (*_jacobian)(_current_node->dof_number(0, _vars(_component), 0), _connected_dof_indices[_j]);
+      retVal =  slave_jac*_test_master[_i][_qp];
+      break;
+    }
+    case Moose::MasterMaster:
+    break;
+  }
+
+  return retVal;
 }

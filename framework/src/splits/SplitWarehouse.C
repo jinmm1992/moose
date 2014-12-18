@@ -15,41 +15,29 @@
 #include "SplitWarehouse.h"
 #include "Split.h"
 
-SplitWarehouse::SplitWarehouse()
+SplitWarehouse::SplitWarehouse() :
+    Warehouse<Split>()
 {
 }
 
 SplitWarehouse::~SplitWarehouse()
 {
-  for (std::map<std::string, Split *>::iterator i = _all_splits.begin(); i != _all_splits.end(); ++i)
-    delete i->second;
 }
 
 void
-SplitWarehouse::addSplit(const std::string& name, Split* split)
+SplitWarehouse::addSplit(const std::string& name, MooseSharedPointer<Split> & split)
 {
-  if (!split) {
-    std::ostringstream err;
-    err << "Attempted addition of a NULL split";
-    mooseError(err.str());
-  }
-  std::pair<std::string,Split*> pair(name,split);
-  _all_splits.insert(pair);
+  _all_objects.push_back(split.get());
+  _all_splits_by_name.insert(std::make_pair(name, split));
 }
 
 Split*
 SplitWarehouse::getSplit(const std::string& name)
 {
-  Split *split = NULL;
-  std::map<std::string,Split*>::iterator it = _all_splits.find(name);
-  if (it != _all_splits.end()) {
-    split = it->second;
-  } else {
-    std::ostringstream err;
-    err << "No split named '" << name << "'";
-    mooseError(err.str());
-  }
-  return split;
+  std::map<std::string, MooseSharedPointer<Split> >::iterator it = _all_splits_by_name.find(name);
+
+  if (it == _all_splits_by_name.end())
+    mooseError("No split named '" << name << "'");
+
+  return it->second.get();
 }
-
-

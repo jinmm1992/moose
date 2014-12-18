@@ -5,9 +5,11 @@
 #include "MatDiffusion.h"
 #include "ACInterface.h"
 #include "CHMath.h"
+#include "CHParsed.h"
 #include "CHInterface.h"
 #include "SplitCHWRes.h"
 #include "SplitCHMath.h"
+#include "SplitCHParsed.h"
 #include "CoupledImplicitEuler.h"
 #include "CrossIC.h"
 #include "SmoothCircleIC.h"
@@ -17,12 +19,18 @@
 #include "SpecifiedSmoothCircleIC.h"
 #include "RndBoundingBoxIC.h"
 #include "PFMobility.h"
+#include "DerivativeParsedMaterial.h"
+#include "DerivativeTwoPhaseMaterial.h"
+#include "BarrierFunctionMaterial.h"
+#include "SwitchingFunctionMaterial.h"
+#include "ElasticEnergyMaterial.h"
 #include "NodalFloodCount.h"
 #include "NodalFloodCountAux.h"
 #include "NodalVolumeFraction.h"
 #include "BndsCalcAux.h"
 #include "ACGrGrPoly.h"
 #include "ACGBPoly.h"
+#include "ACParsed.h"
 #include "GBEvolution.h"
 #include "HexPolycrystalIC.h"
 #include "PolycrystalRandomIC.h"
@@ -37,6 +45,12 @@
 #include "PolycrystalHexGrainICAction.h"
 #include "PolycrystalVoronoiICAction.h"
 #include "PolycrystalRandomICAction.h"
+#ifdef LIBMESH_HAVE_VTK
+#include "ImageFunction.h"
+#endif
+#include "SolutionRasterizer.h"
+#include "ImageMesh.h"
+
 //#include "SPPARKSUserObject.h"
 //#include "SPPARKSAux.h"
 
@@ -44,6 +58,9 @@ template<>
 InputParameters validParams<PhaseFieldApp>()
 {
   InputParameters params = validParams<MooseApp>();
+  params.set<bool>("use_legacy_uo_initialization") = true;
+  params.set<bool>("use_legacy_uo_aux_computation") = false;
+
   return params;
 }
 
@@ -75,12 +92,16 @@ PhaseFieldApp::registerObjects(Factory & factory)
   registerKernel(MatDiffusion);
   registerKernel(ACInterface);
   registerKernel(CHMath);
+  registerKernel(CHParsed);
   registerKernel(CHInterface);
   registerKernel(SplitCHWRes);
   registerKernel(SplitCHMath);
+  registerKernel(SplitCHParsed);
   registerKernel(CoupledImplicitEuler);
   registerKernel(ACGrGrPoly);
   registerKernel(ACGBPoly);
+  registerKernel(ACParsed);
+
   registerInitialCondition(CrossIC);
   registerInitialCondition(SmoothCircleIC);
   registerInitialCondition(RndSmoothCircleIC);
@@ -93,14 +114,29 @@ PhaseFieldApp::registerObjects(Factory & factory)
   registerInitialCondition(PolycrystalReducedIC);
   registerInitialCondition(ThumbIC);
   registerInitialCondition(Tricrystal2CircleGrainsIC);
+
   registerMaterial(PFMobility);
   registerMaterial(GBEvolution);
-  registerUserObject(NodalFloodCount);
+  registerMaterial(DerivativeParsedMaterial);
+  registerMaterial(DerivativeTwoPhaseMaterial);
+  registerMaterial(BarrierFunctionMaterial);
+  registerMaterial(SwitchingFunctionMaterial);
+  registerMaterial(ElasticEnergyMaterial);
+
   registerAux(NodalFloodCountAux);
   registerAux(BndsCalcAux);
   // registerAux(SPPARKSAux);
+
+  registerUserObject(NodalFloodCount);
   registerUserObject(NodalVolumeFraction);
+  registerUserObject(SolutionRasterizer);
   // registerUserObject(SPPARKSUserObject);
+
+#ifdef LIBMESH_HAVE_VTK
+  registerFunction(ImageFunction);
+#endif
+
+  registerMesh(ImageMesh);
 }
 
 void

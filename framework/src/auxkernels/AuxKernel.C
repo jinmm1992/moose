@@ -31,6 +31,7 @@ InputParameters validParams<AuxKernel>()
   params += validParams<BlockRestrictable>();
   params += validParams<BoundaryRestrictable>();
   params += validParams<RandomInterface>();
+  params += validParams<MeshChangedInterface>();
 
   // Add the SetupInterface parameter, 'execute_on', the default is 'residual'
   params += validParams<SetupInterface>();
@@ -57,13 +58,14 @@ AuxKernel::AuxKernel(const std::string & name, InputParameters parameters) :
     FunctionInterface(parameters),
     UserObjectInterface(parameters),
     TransientInterface(parameters, name, "aux_kernels"),
-    MaterialPropertyInterface(parameters),
+    MaterialPropertyInterface(name, parameters),
     PostprocessorInterface(parameters),
     DependencyResolverInterface(),
     RandomInterface(name, parameters, *parameters.get<FEProblem *>("_fe_problem"), parameters.get<THREAD_ID>("_tid"), parameters.get<AuxiliarySystem *>("_aux_sys")->getVariable(parameters.get<THREAD_ID>("_tid"), parameters.get<AuxVariableName>("variable")).isNodal()),
     GeometricSearchInterface(parameters),
     Restartable(name, parameters, "AuxKernels"),
     ZeroInterface(parameters),
+    MeshChangedInterface(parameters),
     _subproblem(*parameters.get<SubProblem *>("_subproblem")),
     _sys(*parameters.get<SystemBase *>("_sys")),
     _nl_sys(*parameters.get<SystemBase *>("_nl_sys")),

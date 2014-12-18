@@ -15,18 +15,18 @@
 #include "DamperWarehouse.h"
 #include "Damper.h"
 
-DamperWarehouse::DamperWarehouse()
+DamperWarehouse::DamperWarehouse() :
+    Warehouse<Damper>()
 {
 }
 
 DamperWarehouse::~DamperWarehouse()
 {
-  for (std::vector<Damper *>::const_iterator j = _dampers.begin(); j != _dampers.end(); ++j)
-    delete *j;
 }
 
 void
-DamperWarehouse::addDamper(Damper *damper)
+DamperWarehouse::addDamper(MooseSharedPointer<Damper> & damper)
 {
-  _dampers.push_back(damper);
+  _all_ptrs.push_back(damper);
+  _all_objects.push_back(damper.get());
 }

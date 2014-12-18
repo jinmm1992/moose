@@ -16,6 +16,7 @@
 #define USER_OBJECTWAREHOUSE_H
 
 #include "UserObject.h"
+#include "Warehouse.h"
 
 #include <vector>
 #include <map>
@@ -30,7 +31,7 @@ class GeneralUserObject;
 /**
  * Holds user_objects and provides some services
  */
-class UserObjectWarehouse
+class UserObjectWarehouse : public Warehouse<UserObject>
 {
 public:
 
@@ -114,48 +115,44 @@ public:
   const std::vector<GeneralUserObject *> & genericUserObjects(GROUP group = ALL);
 
   /**
-   * Get the list of all user_objects
-   * @return The list of all user_objects
-   */
-  const std::vector<UserObject *> & all() { return _all_user_objects; }
-
-  /**
    * Add a user_object
    * @param user_object UserObject being added
    */
-  void addUserObject(UserObject *user_object);
+  void addUserObject(MooseSharedPointer<UserObject> & user_object);
 
   /**
    * Get the list of blocks with user_objects
    * @return The list of block IDs with user_objects
    */
-  const std::set<SubdomainID> & blockIds() { return _block_ids_with_user_objects; }
+  const std::set<SubdomainID> & blockIds() const { return _block_ids_with_user_objects; }
 
   /**
    * Get the list of boundary IDs with user_objects
    * @return The list of boundary IDs with user_objects
    */
-  const std::set<BoundaryID> & boundaryIds() { return _boundary_ids_with_user_objects; }
+  const std::set<BoundaryID> & boundaryIds() const { return _boundary_ids_with_user_objects; }
 
   /**
    * Get the list of nodeset IDs with user_objects
    * @return The list of nodeset IDs with user_objects
    */
-  const std::set<BoundaryID> & nodesetIds() { return _nodeset_ids_with_user_objects; }
+  const std::set<BoundaryID> & nodesetIds() const { return _nodeset_ids_with_user_objects; }
 
   /**
    * Get the list of subdomain IDs with *nodal* user_objects
    * @return The list of subdomain IDs with user_objects
    */
-  const std::set<SubdomainID> & blockNodalIds() { return _block_ids_with_nodal_user_objects; }
+  const std::set<SubdomainID> & blockNodalIds() const { return _block_ids_with_nodal_user_objects; }
 
 protected:
+  /// Internal method for sorting postprocessors based on dependencies
+  template <typename T>
+  void sortUserObjects(std::vector<T *> & pps_vector);
 
   /// Userobject Names
   std::map<std::string, UserObject *> _name_to_user_objects;
 
   // All UserObjects
-  std::vector<UserObject *> _all_user_objects;
   std::vector<ElementUserObject *> _all_element_user_objects;
   std::vector<NodalUserObject *> _all_nodal_user_objects;
   std::vector<SideUserObject *> _all_side_user_objects;
@@ -199,6 +196,9 @@ protected:
   /// All of the block ids that have nodal user_objects specified to act on them
   std::set<SubdomainID> _block_ids_with_nodal_user_objects;
 
+private:
+  /// Hold shared pointers for automatic cleanup
+  std::vector<MooseSharedPointer<UserObject> > _all_ptrs;
 };
 
-#endif // USER_OBJECTWAREHOUSE_Hb
+#endif // USER_OBJECTWAREHOUSE_H

@@ -7,8 +7,7 @@ InputParameters validParams<NodalArea>()
 {
   InputParameters params = validParams<SideIntegralVariableUserObject>();
 
-  params.set<MooseEnum>("execute_on") = "timestep_begin";
-  params.set<MooseEnum>("execute_on") = "residual";
+  params.set<MultiMooseEnum>("execute_on") = "residual";
   return params;
 }
 
@@ -78,7 +77,7 @@ NodalArea::finalize()
   for ( std::map<const Node *, Real>::iterator it = _node_areas.begin(); it != it_end; ++it )
   {
     const Node * const node = it->first;
-    unsigned int dof = node->dof_number(_system.number(), _variable->number(), 0);
+    dof_id_type dof = node->dof_number(_system.number(), _variable->number(), 0);
     _aux_solution.set( dof, 0 );
   }
   _aux_solution.close();
@@ -86,7 +85,7 @@ NodalArea::finalize()
   for ( std::map<const Node *, Real>::iterator it = _node_areas.begin(); it != it_end; ++it )
   {
     const Node * const node = it->first;
-    unsigned int dof = node->dof_number(_system.number(), _variable->number(), 0);
+    dof_id_type dof = node->dof_number(_system.number(), _variable->number(), 0);
     _aux_solution.add( dof, it->second );
   }
   _aux_solution.close();

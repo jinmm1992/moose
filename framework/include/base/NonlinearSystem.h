@@ -38,6 +38,7 @@
 
 class FEProblem;
 class MoosePreconditioner;
+class JacobianBlock;
 
 /**
  * Nonlinear system to be solved
@@ -198,7 +199,8 @@ public:
   /**
    * Finds the implicit sparsity graph between geometrically related dofs.
    */
-  void findImplicitGeometricCouplingEntries(GeometricSearchData & geom_search_data, std::map<unsigned int, std::vector<unsigned int> > & graph);
+  void findImplicitGeometricCouplingEntries(GeometricSearchData & geom_search_data,
+                                            std::map<dof_id_type, std::vector<dof_id_type> > & graph);
 
   /**
    * Adds entries to the Jacobian in the correct positions for couplings coming from dofs being coupled that
@@ -219,14 +221,15 @@ public:
    * @param jacobian Jacobian is formed in here
    */
   void computeJacobian(SparseMatrix<Number> &  jacobian);
+
   /**
-   * Computes a Jacobian block. Used by Physics-based preconditioning
-   * @param jacobian Where the block is stored
-   * @param precond_system libMesh system that is used for the block Jacobian
-   * @param ivar number of i-th variable
-   * @param jvar number of j-th variable
+   * Computes several Jacobian blocks simultaneously, summing their contributions into smaller preconditioning matrices.
+   *
+   * Used by Physics-based preconditioning
+   *
+   * @param blocks The blocks to fill in (JacobianBlock is defined in ComputeJacobianBlocksThread)
    */
-  void computeJacobianBlock(SparseMatrix<Number> & jacobian, libMesh::System & precond_system, unsigned int ivar, unsigned int jvar);
+  void computeJacobianBlocks(std::vector<JacobianBlock *> & blocks);
 
   /**
    * Compute damping
@@ -256,16 +259,7 @@ public:
    */
   virtual void setSolutionUDot(const NumericVector<Number> & udot);
 
-  /**
-   * Set multiplier of udot for Jacobian evaluation.
-   * @param shift temporal shift for Jacobian
-   * @note If the residual is G(u,udot) = 0, the Jacobian is dG/du + shift*dG/dudot
-   * @note If the calling sequence for residual evaluation was changed, this could become an explicit argument.
-   */
-  virtual void setSolutionDuDotDu(Real shift);
-
   virtual NumericVector<Number> & solutionUDot();
-  virtual NumericVector<Number> & solutionDuDotDu();
   virtual NumericVector<Number> & residualVector(Moose::KernelType type);
 
   virtual const NumericVector<Number> * & currentSolution() { return _current_solution; }
@@ -277,14 +271,14 @@ public:
   virtual NumericVector<Number> & residualGhosted();
 
   virtual void augmentSparsity(SparsityPattern::Graph & sparsity,
-                               std::vector<unsigned int> & n_nz,
-                               std::vector<unsigned int> & n_oz);
+                               std::vector<dof_id_type> & n_nz,
+                               std::vector<dof_id_type> & n_oz);
 
   /**
    * Sets a preconditioner
    * @param pc The preconditioner to be set
    */
-  void setPreconditioner(MoosePreconditioner *pc);
+  void setPreconditioner(MooseSharedPointer<MoosePreconditioner> pc);
 
   /**
    * If called with true this system will use a finite differenced form of
@@ -328,10 +322,11 @@ public:
    */
   void reinitDampers(THREAD_ID tid);
 
+  ///@{
   /// System Integrity Checks
   void checkKernelCoverage(const std::set<SubdomainID> & mesh_subdomains, bool check_kernel_coverage) const;
-  void checkBCCoverage() const;
   bool containsTimeKernel();
+  ///@}
 
   /**
    * Return the number of non-linear iterations
@@ -360,13 +355,6 @@ public:
   Real finalNonlinearResidual() { return _final_residual; }
 
   /**
-   * Print n top residuals with variable name and node number
-   * @param residual The residual we work with
-   * @param n The number of residuals to print
-   */
-  void printTopResiduals(const NumericVector<Number> & residual, unsigned int n);
-
-  /**
    * Return the last nonlinear norm
    * @return A Real containing the last computed residual norm
    */
@@ -382,10 +370,10 @@ public:
 
   unsigned int _num_residual_evaluations;
 
-  void setPredictor(Predictor * predictor);
-  Predictor * getPredictor() { return _predictor; }
+  void setPredictor(MooseSharedPointer<Predictor> predictor);
+  Predictor * getPredictor() { return _predictor.get(); }
 
-  TimeIntegrator * & getTimeIntegrator() { return _time_integrator; }
+  TimeIntegrator * getTimeIntegrator() { return _time_integrator.get(); }
 
   void setPCSide(MooseEnum pcs);
 
@@ -402,6 +390,31 @@ public:
    * @return Boolean if DGKernels are active
    */
   bool needMaterialOnSide(SubdomainID subdomain_id, THREAD_ID tid) const;
+
+  /**
+   * Getter for _doing_dg
+   */
+  bool doingDG() const;
+
+  //@{
+  /**
+   * Updates the active kernels/dgkernels in the warehouse for the
+   * passed in subdomain_id and thread
+   */
+  void updateActiveKernels(SubdomainID subdomain_id, THREAD_ID tid);
+  void updateActiveDGKernels(Real t, Real dt, THREAD_ID tid);
+  //@}
+
+  //@{
+  /**
+   * Access functions to Warehouses from outside NonlinearSystem
+   */
+  const KernelWarehouse & getKernelWarehouse(THREAD_ID tid);
+  const DGKernelWarehouse & getDGKernelWarehouse(THREAD_ID tid);
+  const BCWarehouse & getBCWarehouse(THREAD_ID tid);
+  const DiracKernelWarehouse & getDiracKernelWarehouse(THREAD_ID tid);
+  const DamperWarehouse & getDamperWarehouse(THREAD_ID tid);
+  //@}
 
 public:
   FEProblem & _fe_problem;
@@ -456,11 +469,11 @@ protected:
   NumericVector<Number> & _residual_copy;
 
   /// Time integrator
-  TimeIntegrator * _time_integrator;
+  MooseSharedPointer<TimeIntegrator> _time_integrator;
   /// solution vector for u^dot
   NumericVector<Number> & _u_dot;
-  /// solution vector for \f$ {du^dot}\over{du} \f$
-  NumericVector<Number> & _du_dot_du;
+  /// \f$ {du^dot}\over{du} \f$
+  Number _du_dot_du;
   /// residual vector for time contributions
   NumericVector<Number> & _Re_time;
   /// residual vector for non-time contributions
@@ -490,7 +503,7 @@ protected:
   /// increment vector
   NumericVector<Number> * _increment_vec;
   /// Preconditioner
-  MoosePreconditioner * _preconditioner;
+  MooseSharedPointer<MoosePreconditioner> _preconditioner;
   /// Preconditioning side
   Moose::PCSideType _pc_side;
 
@@ -537,21 +550,13 @@ protected:
   Real _final_residual;
 
   /// If predictor is active, this is non-NULL
-  Predictor * _predictor;
+  MooseSharedPointer<Predictor> _predictor;
 
   bool _computing_initial_residual;
 
   bool _print_all_var_norms;
 
-public:
-  friend class ComputeResidualThread;
-  friend class ComputeJacobianThread;
-  friend class ComputeFullJacobianThread;
-  friend class ComputeJacobianBlockThread;
-//  friend class ComputeMaterialsObjectThread;
-//  friend class ProjectMaterialProperties;
-  friend class ComputeDiracThread;
-  friend class ComputeDampingThread;
+  void getNodeDofs(unsigned int node_id, std::vector<dof_id_type> & dofs);
 };
 
 #endif /* NONLINEARSYSTEM_H */

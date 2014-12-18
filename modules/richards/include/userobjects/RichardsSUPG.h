@@ -22,7 +22,7 @@ InputParameters validParams<RichardsSUPG>();
  */
 class RichardsSUPG : public GeneralUserObject
 {
- public:
+public:
   RichardsSUPG(const std::string & name, InputParameters parameters);
 
   void initialize();
@@ -111,6 +111,13 @@ class RichardsSUPG : public GeneralUserObject
    * @param db2_dp derivative of b*b wrt porepressure
    */
   virtual Real dtauSUPG_dp(RealVectorValue vel, RealVectorValue dvel_dp, Real traceperm, RealVectorValue b, Real db2_dp) const = 0;
+
+  /**
+   * Returns true if SUPG is trivial.
+   * This may used for optimization since typically
+   * SUPG stuff is quite expensive to calculate
+   */
+  virtual bool SUPG_trivial() const = 0;
 };
 
 #endif // RICHARDSSUPG_H

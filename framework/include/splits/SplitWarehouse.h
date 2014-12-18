@@ -19,36 +19,30 @@
 #include <map>
 #include <set>
 
-#include "MooseTypes.h"
+#include "Warehouse.h"
 
 class Split;
 
 /**
  * Holds splits and provides some services
  */
-class SplitWarehouse
+class SplitWarehouse : public Warehouse<Split>
 {
 public:
   SplitWarehouse();
   virtual ~SplitWarehouse();
 
   /**
-   * Get list of all splits
-   * @return The list of all splits
-   */
-  const std::vector<Split *> & all();
-
-  /**
    * Add a split
    * @param name - name the split being added should have
    * @param split Split being added
    */
-  void   addSplit(const std::string& name, Split* split);
+  void   addSplit(const std::string& name, MooseSharedPointer<Split> & split);
   Split *getSplit(const std::string& name);
 
 protected:
   /// all splits
-  std::map<std::string, Split *> _all_splits;
+  std::map<std::string, MooseSharedPointer<Split> > _all_splits_by_name;
 };
 
 #endif // SPLITWAREHOUSE_H

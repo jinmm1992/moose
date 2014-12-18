@@ -36,9 +36,7 @@ AddFEProblemAction::~AddFEProblemAction()
 void
 AddFEProblemAction::act()
 {
-  CoupledExecutioner * master_executioner = dynamic_cast<CoupledExecutioner *>(_executioner);
+  CoupledExecutioner * master_executioner = dynamic_cast<CoupledExecutioner *>(_executioner.get());
   if (master_executioner != NULL)
-  {
     master_executioner->addFEProblem(getShortName(), _input_filename);
-  }
 }

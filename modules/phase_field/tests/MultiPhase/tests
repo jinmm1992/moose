@@ -1,0 +1,12 @@
+[Tests]
+  [./derivativetwophasematerial]
+    type = 'Exodiff'
+    input = 'derivativetwophasematerial.i'
+    exodiff = 'derivativetwophasematerial_out.e'
+  [../]
+  [./orderparameterfunctionmaterial]
+    type = 'Exodiff'
+    input = 'orderparameterfunctionmaterial.i'
+    exodiff = 'orderparameterfunctionmaterial_out.e'
+  [../]
+[]

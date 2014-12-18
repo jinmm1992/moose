@@ -16,7 +16,7 @@ InputParameters validParams<RichardsSUPGnone>()
 }
 
 RichardsSUPGnone::RichardsSUPGnone(const std::string & name, InputParameters parameters) :
-  RichardsSUPG(name, parameters)
+    RichardsSUPG(name, parameters)
 {}
 
 RealVectorValue
@@ -77,3 +77,10 @@ RichardsSUPGnone::dtauSUPG_dp(RealVectorValue /*vel*/, RealVectorValue /*dvel_dp
 {
   return 0;
 }
+
+bool
+RichardsSUPGnone::SUPG_trivial() const
+{
+  return true;
+}
+

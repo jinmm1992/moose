@@ -20,7 +20,6 @@
 #include "libmesh/mesh_tools.h"
 #include "libmesh/string_to_enum.h"
 
-#define NOTFOUND -999999
 
 void assemble_l2_from(EquationSystems & es, const std::string & system_name)
 {
@@ -234,7 +233,7 @@ MultiAppProjectionTransfer::assembleL2From(EquationSystems & es, const std::stri
 
     MeshFunction * from_func = new MeshFunction(from_es, *serialized_from_solution, from_sys.get_dof_map(), from_var_num);
     from_func->init(Trees::ELEMENTS);
-    from_func->enable_out_of_mesh_mode(NOTFOUND);
+    from_func->enable_out_of_mesh_mode(OutOfMeshValue);
     from_fns[i] = from_func;
 
     Moose::swapLibMeshComm(swapped);
@@ -320,7 +319,7 @@ MultiAppProjectionTransfer::assembleL2From(EquationSystems & es, const std::stri
 void
 MultiAppProjectionTransfer::execute()
 {
-  Moose::out << "Beginning projection transfer " << _name << std::endl;
+  _console << "Beginning projection transfer " << _name << std::endl;
 
   switch (_direction)
   {
@@ -333,7 +332,7 @@ MultiAppProjectionTransfer::execute()
       break;
   }
 
-  Moose::out << "Finished projection transfer " << _name << std::endl;
+  _console << "Finished projection transfer " << _name << std::endl;
 }
 
 void
@@ -396,7 +395,7 @@ MultiAppProjectionTransfer::projectSolution(FEProblem & to_problem, unsigned int
 void
 MultiAppProjectionTransfer::toMultiApp()
 {
-  Moose::out << "Projecting solution" << std::endl;
+  _console << "Projecting solution" << std::endl;
 
   for (unsigned int app = 0; app < _multi_app->numGlobalApps(); app++)
   {
@@ -412,6 +411,6 @@ MultiAppProjectionTransfer::toMultiApp()
 void
 MultiAppProjectionTransfer::fromMultiApp()
 {
-  Moose::out << "Projecting solution" << std::endl;
+  _console << "Projecting solution" << std::endl;
   projectSolution(*_multi_app->problem(), 0);
 }

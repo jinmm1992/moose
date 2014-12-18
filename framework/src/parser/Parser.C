@@ -33,6 +33,8 @@
 #include "MooseMesh.h"
 #include "Executioner.h"
 #include "MooseApp.h"
+#include "MooseEnum.h"
+#include "MultiMooseEnum.h"
 
 #include "GlobalParamsAction.h"
 
@@ -46,6 +48,7 @@
 #include "libmesh/getpot.h"
 
 Parser::Parser(MooseApp & app, ActionWarehouse & action_wh) :
+    ConsoleStreamInterface(app),
     _app(app),
     _factory(app.getFactory()),
     _action_wh(action_wh),
@@ -144,6 +147,21 @@ Parser::parse(const std::string &input_filename)
   _getpot_initialized = true;
   _inactive_strings.clear();
 
+  // Check for "unidentified nominuses".  These can indicate a vector
+  // input which the user failed to wrap in quotes e.g.: v = 1 2
+  {
+    std::set<std::string> knowns;
+    std::vector<std::string> ufos = _getpot_file.unidentified_nominuses(knowns);
+    if (!ufos.empty())
+    {
+      Moose::err << "Error: the following unidentified entries were found in your input file:" << std::endl;
+      for (unsigned int i=0; i<ufos.size(); ++i)
+        Moose::err << ufos[i] << std::endl;
+      mooseError("Your input file may have a syntax error, or you may have forgotten to put quotes around a vector, ie. v='1 2'.");
+    }
+  }
+
+
   section_names = _getpot_file.get_section_names();
   appendAndReorderSectionNames(section_names);
 
@@ -185,12 +203,11 @@ Parser::parse(const std::string &input_filename)
           params.set<std::string>("registered_identifier") = registered_identifier;
 
           // Create the Action
-          Action * action_obj = _action_factory.create(it->second._action, curr_identifier, params);
-          mooseAssert (action_obj != NULL, std::string("Action") + it->second._action + " not created");
+          MooseSharedPointer<Action> action_obj = _action_factory.create(it->second._action, curr_identifier, params);
 
           // extract the MooseObject params if necessary
-          MooseObjectAction * object_action = dynamic_cast<MooseObjectAction *>(action_obj);
-          if (object_action)
+          MooseSharedPointer<MooseObjectAction> object_action = MooseSharedNamespace::dynamic_pointer_cast<MooseObjectAction>(action_obj);
+          if (object_action.get())
             extractParams(curr_identifier, object_action->getObjectParams());
 
           // add it to the warehouse
@@ -241,17 +258,16 @@ Parser::checkActiveUsed(std::vector<std::string > & sections,
 }
 
 void
-Parser::checkUnidentifiedParams(std::vector<std::string> & all_vars, bool error_on_warn)
+Parser::checkUnidentifiedParams(std::vector<std::string> & all_vars, bool error_on_warn, bool in_input_file) const
 {
   std::set<std::string> difference;
-  std::string message_indicator(error_on_warn ? "*** ERROR" : "*** WARNING");
 
   std::sort(all_vars.begin(), all_vars.end());
 
   std::set_difference(all_vars.begin(), all_vars.end(), _extracted_vars.begin(), _extracted_vars.end(),
                       std::inserter(difference, difference.end()));
 
-  // Remove unparsed parameters that were located in an inactive sections
+  // Remove un-parsed parameters that were located in an inactive sections
   for (std::set<std::string>::iterator i=_inactive_strings.begin(); i != _inactive_strings.end(); ++i)
     for (std::set<std::string>::iterator j=difference.begin(); j != difference.end(); /*no increment*/)
     {
@@ -264,50 +280,55 @@ Parser::checkUnidentifiedParams(std::vector<std::string> & all_vars, bool error_
   {
     std::ostringstream oss;
 
-    oss << "\n" << message_indicator << ": The following parameters were unused in your input file:\n";
+    oss << "The following parameters were unused " << (in_input_file ? "in your input file:\n" : "on the command line:\n");
     for (std::set<std::string>::iterator i=difference.begin(); i != difference.end(); ++i)
       oss << *i << "\n";
-    oss << message_indicator << "\n";
 
     if (error_on_warn)
       mooseError(oss.str());
     else
-      Moose::out << oss.str();
+      mooseWarning(oss.str());
   }
 }
 
 void
-Parser::checkOverriddenParams(bool error_on_warn)
+Parser::checkOverriddenParams(bool error_on_warn) const
 {
   if (!_sections_read && error_on_warn)
     // The user has requested errors but we haven't done any parsing yet so throw an error
     mooseError("No parsing has been done, so checking for overridden parameters is not possible");
 
   std::set<std::string> overridden_vars = _getpot_file.get_overridden_variables();
-  std::string message_indicator(error_on_warn ? "*** ERROR" : "*** WARNING");
 
   if (!overridden_vars.empty())
   {
     std::ostringstream oss;
 
-    oss << message_indicator << ": The following variables were overridden or supplied multiple times:\n";
+    oss << "The following variables were overridden or supplied multiple times:\n";
     for (std::set<std::string>::const_iterator i=overridden_vars.begin();
          i != overridden_vars.end(); ++i)
       oss << *i << "\n";
-    oss << message_indicator << "\n\n";
 
     if (error_on_warn)
       mooseError(oss.str());
     else
-      Moose::out << oss.str() << std::flush;
+      mooseWarning(oss.str());
   }
 }
 
 void
 Parser::appendAndReorderSectionNames(std::vector<std::string> & section_names)
 {
-  CommandLine *cmd_line = _app.commandLine();
-  if (cmd_line)
+  /**
+   * We only want to retrieve CLI overrides for the main application. We'll check the
+   * name of the controlling application to determine whether to use the command line
+   * here or not.
+   */
+  MooseSharedPointer<CommandLine> cmd_line;
+  if (_app.name() == "main") // See AppFactory::createApp
+    cmd_line = _app.commandLine();
+
+  if (cmd_line.get())
   {
     GetPot *get_pot = cmd_line->getPot();
     mooseAssert(get_pot, "GetPot object is NULL");
@@ -337,7 +358,7 @@ Parser::appendAndReorderSectionNames(std::vector<std::string> & section_names)
    *                     It must be parsed early since it must exist during subsequent parameter extraction.
    *
    * Note: I realize that doing inserts and deletes in a vector are "slow".  Swapping is not an option due to the
-   *       way that active_lists are constucted.  These are small vectors ;)
+   *       way that active_lists are constructed.  These are small vectors ;)
    */
   // Locate the global params section
   std::string global_syntax = _syntax.getSyntaxByAction("GlobalParamsAction", "set_global_params");
@@ -459,7 +480,8 @@ Parser::buildFullTree(const std::string &search_string)
     }
   }
 
-  Moose::out << _syntax_formatter->print(search_string);
+  // Do not change to _console, we need this printed to the stdout in all cases
+  Moose::out << _syntax_formatter->print(search_string) << std::flush;
 }
 
 
@@ -492,6 +514,10 @@ void Parser::setScalarParameter<PostprocessorName>(const std::string & full_name
 template<>
 void Parser::setScalarParameter<MooseEnum>(const std::string & full_name, const std::string & short_name,
                                            InputParameters::Parameter<MooseEnum>* param, bool in_global, GlobalParamsAction *global_block);
+
+template<>
+void Parser::setScalarParameter<MultiMooseEnum>(const std::string & full_name, const std::string & short_name,
+                                                InputParameters::Parameter<MultiMooseEnum>* param, bool in_global, GlobalParamsAction *global_block);
 
 template<>
 void Parser::setScalarParameter<RealTensorValue>(const std::string & full_name, const std::string & short_name,
@@ -621,6 +647,7 @@ Parser::extractParams(const std::string & prefix, InputParameters &p)
       dynamicCastAndExtractScalar(RealVectorValue       , it->second, full_name, it->first, in_global, global_params_block);
       dynamicCastAndExtractScalar(Point                 , it->second, full_name, it->first, in_global, global_params_block);
       dynamicCastAndExtractScalar(MooseEnum             , it->second, full_name, it->first, in_global, global_params_block);
+      dynamicCastAndExtractScalar(MultiMooseEnum        , it->second, full_name, it->first, in_global, global_params_block);
       dynamicCastAndExtractScalar(RealTensorValue       , it->second, full_name, it->first, in_global, global_params_block);
 
       // Moose String-derived scalars
@@ -650,8 +677,18 @@ Parser::extractParams(const std::string & prefix, InputParameters &p)
       // built-ins
       dynamicCastAndExtractVector(Real                  , it->second, full_name, it->first, in_global, global_params_block);
       dynamicCastAndExtractVector(int                   , it->second, full_name, it->first, in_global, global_params_block);
+      dynamicCastAndExtractVector(long                  , it->second, full_name, it->first, in_global, global_params_block);
       dynamicCastAndExtractVector(unsigned int          , it->second, full_name, it->first, in_global, global_params_block);
-      dynamicCastAndExtractVector(bool                  , it->second, full_name, it->first, in_global, global_params_block);
+      // We need to be able to parse 8-byte unsigned types when
+      // libmesh is configured --with-dof-id-bytes=8.  Officially,
+      // libmesh uses uint64_t in that scenario, which is usually
+      // equivalent to 'unsigned long long'.  Note that 'long long'
+      // has been around since C99 so most C++ compilers support it,
+      // but presumably uint64_t is the "most standard" way to get a
+      // 64-bit unsigned type, so we'll stick with that here.
+#if LIBMESH_DOF_ID_BYTES == 8
+      dynamicCastAndExtractVector(uint64_t              , it->second, full_name, it->first, in_global, global_params_block);
+#endif
 
       // Moose Vectors
       dynamicCastAndExtractVector(SubdomainID           , it->second, full_name, it->first, in_global, global_params_block);
@@ -834,7 +871,7 @@ void Parser::setScalarParameter<MooseEnum>(const std::string & full_name, const 
 
   // See if this variable was passed on the command line
   // if it was then we will retrieve the value from the command line instead of the file
-  if (_app.commandLine() && _app.commandLine()->haveVariable(full_name.c_str()))
+  if (_app.name() == "main" && _app.commandLine()->haveVariable(full_name.c_str()))
     gp = _app.commandLine()->getPot();
   else
     gp = &_getpot_file;
@@ -852,13 +889,45 @@ void Parser::setScalarParameter<MooseEnum>(const std::string & full_name, const 
 }
 
 template<>
+void Parser::setScalarParameter<MultiMooseEnum>(const std::string & full_name, const std::string & short_name, InputParameters::Parameter<MultiMooseEnum> * param, bool in_global, GlobalParamsAction * global_block)
+{
+  GetPot *gp;
+
+  // See if this variable was passed on the command line
+  // if it was then we will retrieve the value from the command line instead of the file
+  if (_app.name() == "main" && _app.commandLine()->haveVariable(full_name.c_str()))
+    gp = _app.commandLine()->getPot();
+  else
+    gp = &_getpot_file;
+
+  MultiMooseEnum current_param = param->get();
+
+  int vec_size = gp->vector_variable_size(full_name.c_str());
+
+  std::string raw_values;
+  for (int i = 0; i < vec_size; ++i)
+  {
+    std::string single_value = gp->get_value_no_default(full_name.c_str(), "", i);
+    raw_values += ' ' + single_value;
+  }
+
+  param->set() = raw_values;
+
+  if (in_global)
+  {
+    global_block->remove(short_name);
+    global_block->setScalarParam<MultiMooseEnum>(short_name) = current_param;
+  }
+}
+
+template<>
 void Parser::setScalarParameter<RealTensorValue>(const std::string & full_name, const std::string & short_name, InputParameters::Parameter<RealTensorValue> * param, bool in_global, GlobalParamsAction * global_block)
 {
   GetPot *gp;
 
   // See if this variable was passed on the command line
   // if it was then we will retrieve the value from the command line instead of the file
-  if (_app.commandLine() && _app.commandLine()->haveVariable(full_name.c_str()))
+  if (_app.name() == "main" && _app.commandLine()->haveVariable(full_name.c_str()))
     gp = _app.commandLine()->getPot();
   else
     gp = &_getpot_file;
@@ -889,7 +958,7 @@ void Parser::setScalarParameter<PostprocessorName>(const std::string & full_name
 
   // See if this variable was passed on the command line
   // if it was then we will retrieve the value from the command line instead of the file
-  if (_app.commandLine() && _app.commandLine()->haveVariable(full_name.c_str()))
+  if (_app.name() == "main" && _app.commandLine()->haveVariable(full_name.c_str()))
     gp = _app.commandLine()->getPot();
   else
     gp = &_getpot_file;
@@ -930,7 +999,7 @@ void Parser::setVectorParameter<MooseEnum>(const std::string & full_name, const 
 
   // See if this variable was passed on the command line
   // if it was then we will retrieve the value from the command line instead of the file
-  if (_app.commandLine() && _app.commandLine()->haveVariable(full_name.c_str()))
+  if (_app.name() == "main" && _app.commandLine()->haveVariable(full_name.c_str()))
     gp = _app.commandLine()->getPot();
   else
     gp = &_getpot_file;
@@ -968,7 +1037,7 @@ void Parser::setVectorParameter<VariableName>(const std::string & full_name, con
 
   // See if this variable was passed on the command line
   // if it was then we will retrieve the value from the command line instead of the file
-  if (_app.commandLine() && _app.commandLine()->haveVariable(full_name.c_str()))
+  if (_app.name() == "main" && _app.commandLine()->haveVariable(full_name.c_str()))
     gp = _app.commandLine()->getPot();
   else
     gp = &_getpot_file;

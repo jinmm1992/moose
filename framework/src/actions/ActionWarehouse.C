@@ -25,16 +25,14 @@
 #include "InfixIterator.h"
 
 ActionWarehouse::ActionWarehouse(MooseApp & app, Syntax & syntax, ActionFactory & factory) :
+    Warehouse<Action>(),
+    ConsoleStreamInterface(app),
     _app(app),
     _syntax(syntax),
     _action_factory(factory),
     _generator_valid(false),
     _show_actions(false),
-    _show_parser(false),
-    _mesh(NULL),
-    _displaced_mesh(NULL),
-    _problem(NULL),
-    _executioner(NULL)
+    _show_parser(false)
 {
 }
 
@@ -53,20 +51,25 @@ ActionWarehouse::build()
 void
 ActionWarehouse::clear()
 {
-  std::set<Action *> unique_action_ptrs;
-  for (std::map<std::string, std::vector<Action *> >::iterator it = _action_blocks.begin(); it != _action_blocks.end(); ++it)
-    for (std::vector<Action *>::iterator jt = (*it).second.begin(); jt != (*it).second.end(); ++jt)
-      unique_action_ptrs.insert(*jt);
-
-  for (std::set<Action *>::iterator it = unique_action_ptrs.begin(); it != unique_action_ptrs.end(); ++it)
-    delete *it;
+  for (std::vector<MooseSharedPointer<Action> >::iterator it = _all_ptrs.begin(); it != _all_ptrs.end(); ++it)
+    it->reset();
 
   _action_blocks.clear();
   _generator_valid = false;
+
+  // Due to the way ActionWarehouse is cleaned up (see MooseApp's
+  // destructor) we must guarantee that ActionWarehouse::clear()
+  // releases all the resources which have to be released _before_ the
+  // _comm object owned by the MooseApp is destroyed.
+  _mesh.reset();
+  _displaced_mesh.reset();
+
+  _problem.reset();
+  _executioner.reset();
 }
 
 void
-ActionWarehouse::addActionBlock(Action * action)
+ActionWarehouse::addActionBlock(MooseSharedPointer<Action> action)
 {
   /**
    * Note: This routine uses the XTerm colors directly which is not advised for general purpose output coloring.
@@ -79,10 +82,10 @@ ActionWarehouse::addActionBlock(Action * action)
   std::set<std::string> tasks;
 
   if (_show_parser)
-    Moose::err << COLOR_DEFAULT << "Parsing Syntax:        " << GREEN   << action->name() << '\n'
+    Moose::err << COLOR_DEFAULT << "Parsing Syntax:        " << COLOR_GREEN   << action->name() << '\n'
                << COLOR_DEFAULT << "Building Action:       " << COLOR_DEFAULT << action->type() << '\n'
-               << COLOR_DEFAULT << "Registered Identifier: " << GREEN   << registered_identifier << '\n'
-               << COLOR_DEFAULT << "Specific Task:         " << CYAN    << action->specificTaskName() << '\n';
+               << COLOR_DEFAULT << "Registered Identifier: " << COLOR_GREEN   << registered_identifier << '\n'
+               << COLOR_DEFAULT << "Specific Task:         " << COLOR_CYAN    << action->specificTaskName() << '\n';
 
   /**
    * We need to see if the current Action satisfies multiple tasks. There are a few cases to consider:
@@ -124,8 +127,8 @@ ActionWarehouse::addActionBlock(Action * action)
 
     // Make sure that the ObjectAction task and Action task are consistent
     // otherwise that means that is action was built by the wrong type
-    MooseObjectAction * moa = dynamic_cast<MooseObjectAction *>(action);
-    if (moa)
+    MooseSharedPointer<MooseObjectAction> moa = MooseSharedNamespace::dynamic_pointer_cast<MooseObjectAction>(action);
+    if (moa.get())
     {
       InputParameters mparams = moa->getObjectParams();
 
@@ -144,10 +147,11 @@ ActionWarehouse::addActionBlock(Action * action)
     action->appendTask(*it);
 
     if (_show_parser)
-      Moose::err << YELLOW << "Adding Action:         " << COLOR_DEFAULT << action->type() << " (" << YELLOW << *it << COLOR_DEFAULT << ")\n";
+      Moose::err << COLOR_YELLOW << "Adding Action:         " << COLOR_DEFAULT << action->type() << " (" << COLOR_YELLOW << *it << COLOR_DEFAULT << ")\n";
 
     // Add it to the warehouse
-    _action_blocks[*it].push_back(action);
+    _all_ptrs.push_back(action);
+    _action_blocks[*it].push_back(action.get());
   }
 
   if (_show_parser)
@@ -169,7 +173,10 @@ ActionWarehouse::actionBlocksWithActionEnd(const std::string & task)
 const std::vector<Action *> &
 ActionWarehouse::getActionsByName(const std::string & task) const
 {
-  return _action_blocks.at(task);
+  std::map<std::string, std::vector<Action *> >::const_iterator it = _action_blocks.find(task);
+  if (it == _action_blocks.end())
+    mooseError("The task " << task << " does not exist.");
+  return it->second;
 }
 
 void
@@ -236,7 +243,7 @@ ActionWarehouse::printActionDependencySets() const
   const std::vector<std::set<std::string> > & ordered_names = _syntax.getSortedTaskSet();
   for (std::vector<std::set<std::string> >::const_iterator i = ordered_names.begin(); i != ordered_names.end(); ++i)
   {
-    oss << "[DBG][ACT] (" << YELLOW;
+    oss << "[DBG][ACT] (" << COLOR_YELLOW;
     std::copy(i->begin(), i->end(), infix_ostream_iterator<std::string>(oss, ", "));
     oss << COLOR_DEFAULT << ")\n";
 
@@ -249,7 +256,7 @@ ActionWarehouse::printActionDependencySets() const
 
         // The Syntax of the Action if it exists
         if ((*k)->name() != "")
-          oss << "[DBG][ACT]\t" << GREEN << (*k)->name() << COLOR_DEFAULT << '\n';
+          oss << "[DBG][ACT]\t" << COLOR_GREEN << (*k)->name() << COLOR_DEFAULT << '\n';
 
         // The task sets
         oss << "[DBG][ACT]\t" << act->type();
@@ -264,9 +271,9 @@ ActionWarehouse::printActionDependencySets() const
           std::set_difference(tasks.begin(), tasks.end(), intersection.begin(), intersection.end(),
                               std::inserter(difference, difference.end()));
 
-          oss << CYAN;
+          oss << COLOR_CYAN;
           std::copy(intersection.begin(), intersection.end(), infix_ostream_iterator<std::string>(oss, ", "));
-          oss << MAGENTA << (difference.empty() ? "" : ", ");
+          oss << COLOR_MAGENTA << (difference.empty() ? "" : ", ");
           std::copy(difference.begin(), difference.end(), infix_ostream_iterator<std::string>(oss, ", "));
           oss << COLOR_DEFAULT << ")";
         }
@@ -276,7 +283,7 @@ ActionWarehouse::printActionDependencySets() const
   }
 
   if (_show_actions)
-    Moose::out << oss.str() << std::endl;
+    _console << oss.str() << std::endl;
 }
 
 void
@@ -284,10 +291,10 @@ ActionWarehouse::executeAllActions()
 {
   if (_show_actions)
   {
-    Moose::out << "[DBG][ACT] Action Dependency Sets:\n";
+    _console << "[DBG][ACT] Action Dependency Sets:\n";
     printActionDependencySets();
 
-    Moose::out << "\n[DBG][ACT] Executing actions:" << std::endl;
+    _console << "\n[DBG][ACT] Executing actions:" << std::endl;
   }
 
 
@@ -309,7 +316,7 @@ ActionWarehouse::executeActionsWithAction(const std::string & task)
        ++act_iter)
   {
     if (_show_actions)
-      Moose::out << "[DBG][ACT] " << (*act_iter)->type() << " (" << YELLOW << task << COLOR_DEFAULT << ")"  << std::endl;
+      _console << "[DBG][ACT] " << (*act_iter)->type() << " (" << COLOR_YELLOW << task << COLOR_DEFAULT << ")"  << std::endl;
     (*act_iter)->act();
   }
 }

@@ -16,6 +16,7 @@
 #define ACTION_H
 
 #include "InputParameters.h"
+#include "ConsoleStreamInterface.h"
 
 #include <string>
 #include <ostream>
@@ -35,7 +36,7 @@ InputParameters validParams<Action>();
 /**
  * Base class for actions.
  */
-class Action
+class Action : public ConsoleStreamInterface
 {
 public:
   Action(const std::string & name, InputParameters params);
@@ -53,11 +54,18 @@ public:
 
   const std::set<std::string> & getAllTasks() const { return _all_tasks; }
 
+  ///@{
+  /**
+   * Retrieve a parameter for the object
+   * @param name The name of the parameter
+   * @return The value of the parameter
+   */
   template <typename T>
-  const T & getParam(const std::string & name) { return _pars.get<T>(name); }
+  const T & getParam(const std::string & name);
 
   template <typename T>
-  const T & getParam(const std::string & name) const { return _pars.get<T>(name); }
+  const T & getParam(const std::string & name) const;
+  ///@}
 
   inline bool isParamValid(const std::string &name) const { return _pars.isParamValid(name); }
 
@@ -112,16 +120,30 @@ protected:
   ActionWarehouse & _awh;
 
   /// The current action (even though we have seperate instances for each action)
-  const std::string & _current_action;
+  const std::string & _current_task;
 
-  MooseMesh * & _mesh;
-  MooseMesh * & _displaced_mesh;
+  MooseSharedPointer<MooseMesh> & _mesh;
+  MooseSharedPointer<MooseMesh> & _displaced_mesh;
   /// Convenience reference to a problem this action works on
 
 public:
-  FEProblem * & _problem;
+  MooseSharedPointer<FEProblem> & _problem;
   /// Convenience reference to an executioner
-  Executioner * & _executioner;
+  MooseSharedPointer<Executioner> & _executioner;
 };
+
+template <typename T>
+const T &
+Action::getParam(const std::string & name)
+{
+  return InputParameters::getParamHelper(name, _pars, static_cast<T *>(0));
+}
+
+template <typename T>
+const T &
+Action::getParam(const std::string & name) const
+{
+  return InputParameters::getParamHelper(name, _pars, static_cast<T *>(0));
+}
 
 #endif // ACTION_H

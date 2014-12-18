@@ -73,12 +73,14 @@ protected:
     PA_MECH_STATUS
   };
 
-  std::string _quantity_string;
   PA_ENUM _quantity;
 
   virtual Real computeValue();
 
   PenetrationLocator & _penetration_locator;
+
+public:
+  static const Real NotPenetrated;
 };
 
 #endif //PENETRATIONAUX_H

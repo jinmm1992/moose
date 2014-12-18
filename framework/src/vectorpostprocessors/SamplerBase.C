@@ -20,7 +20,7 @@ InputParameters validParams<SamplerBase>()
 {
   InputParameters params = emptyInputParameters();
 
-  MooseEnum sort_options("x,y,z,id");
+  MooseEnum sort_options("x y z id");
   params.addRequiredParam<MooseEnum>("sort_by", sort_options, "What to sort the samples by");
 
   return params;
@@ -122,7 +122,7 @@ SamplerBase::finalize()
 
   for (unsigned int i=0; i<sorted_indices.size(); i++)
   {
-    unsigned int index = sorted_indices[i];
+    size_t index = sorted_indices[i];
 
     _x[i] = _x_tmp[index];
     _y[i] = _y_tmp[index];

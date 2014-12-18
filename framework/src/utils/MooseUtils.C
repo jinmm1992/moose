@@ -22,6 +22,9 @@
 #include <istream>
 #include <iterator>
 
+// External includes
+#include "pcrecpp.h"
+
 namespace MooseUtils
 {
 
@@ -33,7 +36,7 @@ tokenize(const std::string &str, std::vector<std::string> &elements, unsigned in
   std::string::size_type last_pos = str.find_first_not_of(delims, 0);
   std::string::size_type pos = str.find_first_of(delims, std::min(last_pos + min_len, str.size()));
 
-  while (pos != std::string::npos || last_pos != std::string::npos)
+  while (last_pos != std::string::npos)
   {
     elements.push_back(str.substr(last_pos, pos - last_pos));
     // skip delims between tokens
@@ -123,7 +126,7 @@ parallelBarrierNotify(const Parallel::Communicator & comm)
   if (comm.rank() == 0)
   {
     // The master process is already through, so report it
-    Moose::out << "Jobs complete: 1/" << comm.size() << "\r" << std::flush;
+    Moose::out << "Jobs complete: 1/" << comm.size() << (1 == comm.size() ? "\n" : "\r") << std::flush;
     for (unsigned int i=2; i<=comm.size(); ++i)
     {
       comm.receive(MPI_ANY_SOURCE, slave_processor_id);
@@ -140,12 +143,116 @@ parallelBarrierNotify(const Parallel::Communicator & comm)
 }
 
 bool
-hasExtension(const std::string & filename, std::string ext)
+hasExtension(const std::string & filename, std::string ext, bool strip_exodus_ext)
 {
-  if (filename.substr(filename.find_last_of(".") + 1) == ext)
+  // Extract the extension, w/o the '.'
+  std::string file_ext;
+  if (strip_exodus_ext)
+  {
+    pcrecpp::RE re(".*\\.([^\\.]*?)(?:-s\\d+)?\\s*$"); // capture the complete extension, ignoring -s*
+    re.FullMatch(filename, &file_ext);
+  }
+  else
+  {
+    pcrecpp::RE re(".*\\.([^\\.]*?)\\s*$"); // capture the complete extension
+    re.FullMatch(filename, &file_ext);
+  }
+
+  // Perform the comparision
+  if (file_ext == ext)
     return true;
   else
     return false;
+}
+
+std::pair<std::string, std::string>
+splitFileName(std::string full_file)
+{
+  // Error if path ends with /
+  if (full_file[full_file.size()-1] == '/')
+    mooseError("Invalid full file name: " << full_file);
+
+  // Define the variables to output
+  std::string path;
+  std::string file;
+
+  // Locate the / sepearting the file from path
+  std::size_t found = full_file.find_last_of("/");
+
+  // If no / is found used "." for the path, otherwise seperate the two
+  if (found == std::string::npos)
+  {
+    path = ".";
+    file = full_file;
+  }
+  else
+  {
+    path = full_file.substr(0, found);
+    file = full_file.substr(found+1);
+  }
+
+  // Return the path and file as a pair
+  return std::pair<std::string, std::string>(path, file);
+}
+
+bool
+absoluteFuzzyEqual(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (std::abs(var1 - var2) < tol);
+}
+
+bool
+absoluteFuzzyGreaterEqual(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (var1 > (var2 - tol));
+}
+
+bool
+absoluteFuzzyGreaterThan(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (var1 > (var2 + tol));
+}
+
+bool
+absoluteFuzzyLessEqual(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (var1 < (var2 + tol));
+}
+
+bool
+absoluteFuzzyLessThan(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (var1 < (var2 - tol));
+}
+
+bool
+relativeFuzzyEqual(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (absoluteFuzzyEqual(var1, var2, tol*(std::abs(var1)+std::abs(var2))));
+}
+
+bool
+relativeFuzzyGreaterEqual(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (absoluteFuzzyGreaterEqual(var1, var2, tol*(std::abs(var1)+std::abs(var2))));
+}
+
+bool
+relativeFuzzyGreaterThan(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (absoluteFuzzyGreaterThan(var1, var2, tol*(std::abs(var1)+std::abs(var2))));
+}
+
+bool
+relativeFuzzyLessEqual(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (absoluteFuzzyLessEqual(var1, var2, tol*(std::abs(var1)+std::abs(var2))));
+}
+
+bool
+relativeFuzzyLessThan(const Real & var1, const Real & var2, const Real & tol)
+{
+  return (absoluteFuzzyLessThan(var1, var2, tol*(std::abs(var1)+std::abs(var2))));
 }
 
 } // MooseUtils namespace

@@ -39,7 +39,9 @@ ThreadedElementLoop<ConstElemRange>(fe_problem, sys),
   _bnd_material_props(bnd_material_props),
   _materials(materials),
   _assembly(assembly),
-  _need_internal_side_material(false)
+  _need_internal_side_material(false),
+  _has_stateful_props(_material_props.hasStatefulProperties()),
+  _has_bnd_stateful_props(_bnd_material_props.hasStatefulProperties())
 {
 }
 
@@ -55,7 +57,9 @@ ComputeMaterialsObjectThread::ComputeMaterialsObjectThread(ComputeMaterialsObjec
     _bnd_material_props(x._bnd_material_props),
     _materials(x._materials),
     _assembly(x._assembly),
-    _need_internal_side_material(x._need_internal_side_material)
+    _need_internal_side_material(x._need_internal_side_material),
+    _has_stateful_props(_material_props.hasStatefulProperties()),
+    _has_bnd_stateful_props(_bnd_material_props.hasStatefulProperties())
 {
 }
 
@@ -67,18 +71,23 @@ void
 ComputeMaterialsObjectThread::subdomainChanged()
 {
   _need_internal_side_material = _fe_problem.needMaterialOnSide(_subdomain, _tid);
-
-  mooseAssert(_materials[_tid].hasMaterials(_subdomain), "No materials on subdomain block");
   _fe_problem.subdomainSetup(_subdomain, _tid);
 }
 
 void
 ComputeMaterialsObjectThread::onElement(const Elem *elem)
 {
-  _assembly[_tid]->reinit(elem);
+  if (_materials[_tid].hasMaterials(_subdomain))
+  {
+    _assembly[_tid]->reinit(elem);
 
-  unsigned int n_points = _assembly[_tid]->qRule()->n_points();
-  _material_props.initStatefulProps(*_material_data[_tid], _materials[_tid].getMaterials(_subdomain), n_points, *elem);
+    unsigned int n_points = _assembly[_tid]->qRule()->n_points();
+    if (_material_data[_tid]->nQPoints() != n_points)
+      _material_data[_tid]->size(n_points);
+
+    if (_has_stateful_props)
+      _material_props.initStatefulProps(*_material_data[_tid], _materials[_tid].getMaterials(_subdomain), n_points, *elem);
+  }
 }
 
 void
@@ -88,8 +97,18 @@ ComputeMaterialsObjectThread::onBoundary(const Elem *elem, unsigned int side, Bo
   {
     _fe_problem.setCurrentBoundaryID(bnd_id);
     _assembly[_tid]->reinit(elem, side);
-    unsigned int n_points = _assembly[_tid]->qRuleFace()->n_points();
-    _bnd_material_props.initStatefulProps(*_bnd_material_data[_tid], _materials[_tid].getFaceMaterials(_subdomain), n_points, *elem, side);
+    unsigned int face_n_points = _assembly[_tid]->qRuleFace()->n_points();
+
+    if (_bnd_material_data[_tid]->nQPoints() != face_n_points)
+      _bnd_material_data[_tid]->size(face_n_points);
+
+    // Face Materials
+    if (_materials[_tid].hasFaceMaterials(_subdomain) && _has_bnd_stateful_props)
+      _bnd_material_props.initStatefulProps(*_bnd_material_data[_tid], _materials[_tid].getFaceMaterials(_subdomain), face_n_points, *elem, side);
+    // Boundary Materials
+    if (_materials[_tid].hasBoundaryMaterials(bnd_id) && _has_bnd_stateful_props)
+      _bnd_material_props.initStatefulProps(*_bnd_material_data[_tid], _materials[_tid].getBoundaryMaterials(bnd_id), face_n_points, *elem, side);
+
     _fe_problem.setCurrentBoundaryID(Moose::INVALID_BOUNDARY_ID);
   }
 }
@@ -101,15 +120,26 @@ ComputeMaterialsObjectThread::onInternalSide(const Elem *elem, unsigned int side
   {
     _assembly[_tid]->reinit(elem, side);
     unsigned int face_n_points = _assembly[_tid]->qRuleFace()->n_points();
-    _bnd_material_props.initStatefulProps(*_bnd_material_data[_tid], _materials[_tid].getFaceMaterials(_subdomain), face_n_points, *elem, side);
+    if (_bnd_material_data[_tid]->nQPoints() != face_n_points)
+      _bnd_material_data[_tid]->size(face_n_points);
+    if (_neighbor_material_data[_tid]->nQPoints() != face_n_points)
+      _neighbor_material_data[_tid]->size(face_n_points);
+
+    if (_has_bnd_stateful_props)
+      _bnd_material_props.initStatefulProps(*_bnd_material_data[_tid], _materials[_tid].getFaceMaterials(_subdomain), face_n_points, *elem, side);
 
     const Elem * neighbor = elem->neighbor(side);
     unsigned int neighbor_side = neighbor->which_neighbor_am_i(_assembly[_tid]->elem());
-    const unsigned int elem_id = elem->id();
-    const unsigned int neighbor_id = neighbor->id();
-    if ((neighbor->active() && (neighbor->level() == elem->level()) && (elem_id < neighbor_id)) || (neighbor->level() < elem->level()))
+    const dof_id_type
+      elem_id = elem->id(),
+      neighbor_id = neighbor->id();
+
+    if (_has_bnd_stateful_props && ((neighbor->active() && (neighbor->level() == elem->level()) && (elem_id < neighbor_id)) || (neighbor->level() < elem->level())))
     {
       _assembly[_tid]->reinitElemAndNeighbor(elem, side, neighbor, neighbor_side);
+      // Face Materials
+      _bnd_material_props.initStatefulProps(*_bnd_material_data[_tid], _materials[_tid].getFaceMaterials(_subdomain), face_n_points, *elem, side);
+      // Neighbor Materials
       _bnd_material_props.initStatefulProps(*_neighbor_material_data[_tid], _materials[_tid].getNeighborMaterials(_subdomain), face_n_points, *neighbor, neighbor_side);
     }
   }

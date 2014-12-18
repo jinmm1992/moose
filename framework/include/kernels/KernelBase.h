@@ -32,6 +32,8 @@
 #include "MooseTypes.h"
 #include "Restartable.h"
 #include "ZeroInterface.h"
+#include "MeshChangedInterface.h"
+
 // libMesh
 #include "libmesh/fe.h"
 #include "libmesh/quadrature.h"
@@ -57,7 +59,8 @@ class KernelBase :
   public RandomInterface,
   protected GeometricSearchInterface,
   public Restartable,
-  public ZeroInterface
+  public ZeroInterface,
+  public MeshChangedInterface
 {
 public:
   KernelBase(const std::string & name, InputParameters parameters);
@@ -82,7 +85,7 @@ public:
   /// Returns the variable number that this Kernel operates on.
   MooseVariable & variable();
 
-  /// Returns a reference to the subproblem for which this Kernel is active
+  /// Returns a reference to the SubProblem for which this Kernel is active
   SubProblem & subProblem();
 
 protected:
@@ -98,8 +101,13 @@ protected:
   /// The thread ID for this kernel
   THREAD_ID _tid;
 
+  /// Reference to this Kernel's assembly object
   Assembly & _assembly;
+
+  /// Reference to this Kernel's MooseVariable object
   MooseVariable & _var;
+
+  /// Reference to this Kernel's mesh object
   MooseMesh & _mesh;
 
   const Elem * & _current_elem;
@@ -107,10 +115,19 @@ protected:
   /// Volume of the current element
   const Real & _current_elem_volume;
 
+  /// The current quadrature point index
   unsigned int _qp;
+
+  /// The physical location of the element's quadrature Points, indexed by _qp
   const MooseArray< Point > & _q_point;
+
+  /// active quadrature rule
   QBase * & _qrule;
+
+  /// The current quadrature point weight value
   const MooseArray<Real> & _JxW;
+
+  /// The scaling factor to convert from cartesian to another coordinate system (e.g rz, spherical, etc.)
   const MooseArray<Real> & _coord;
 
   /// current index for the test function

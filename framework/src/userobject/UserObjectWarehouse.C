@@ -22,14 +22,13 @@
 #include "SubProblem.h"
 #include "Parser.h"
 
-UserObjectWarehouse::UserObjectWarehouse()
+UserObjectWarehouse::UserObjectWarehouse() :
+    Warehouse<UserObject>()
 {
 }
 
 UserObjectWarehouse::~UserObjectWarehouse()
 {
-  for (std::vector<UserObject *>::iterator i=_all_user_objects.begin(); i!=_all_user_objects.end(); ++i)
-    delete *i;
 }
 
 void
@@ -104,6 +103,8 @@ UserObjectWarehouse::updateDependObjects(const std::set<std::string> & depend_uo
     }
   }
 
+  // Sort the General UserObjects
+  sortUserObjects(_all_generic_user_objects);
   _pre_generic_user_objects.clear();
   _post_generic_user_objects.clear();
   for (std::vector<GeneralUserObject *>::iterator it2 = _all_generic_user_objects.begin(); it2 != _all_generic_user_objects.end(); ++it2)
@@ -233,17 +234,21 @@ UserObjectWarehouse::jacobianSetup()
 
 
 void
-UserObjectWarehouse::addUserObject(UserObject *user_object)
+UserObjectWarehouse::addUserObject(MooseSharedPointer<UserObject> & user_object)
 {
   // Add the object and its name to the lists of all objects
-  _all_user_objects.push_back(user_object);
-  _name_to_user_objects[user_object->name()] = user_object;
+  _all_ptrs.push_back(user_object);
+
+  UserObject * raw_ptr = user_object.get();
+
+  _all_objects.push_back(raw_ptr);
+  _name_to_user_objects[user_object->name()] = raw_ptr;
 
   // Add an ElementUserObject
-  if (dynamic_cast<ElementUserObject*>(user_object))
+  if (dynamic_cast<ElementUserObject*>(raw_ptr))
   {
     // Extract the BlockIDs (see BlockRestrictable)
-    ElementUserObject * element_uo = dynamic_cast<ElementUserObject*>(user_object);
+    ElementUserObject * element_uo = dynamic_cast<ElementUserObject *>(raw_ptr);
     const std::set<SubdomainID> & blks = element_uo->blockIDs();
 
     // Add to the list of all SideUserObjects
@@ -258,10 +263,10 @@ UserObjectWarehouse::addUserObject(UserObject *user_object)
   }
 
   // Add a SideUserObject
-  else if (dynamic_cast<SideUserObject*>(user_object))
+  else if (dynamic_cast<SideUserObject *>(raw_ptr))
   {
     // Extract the BoundaryIDs (see BoundaryRestrictable)
-    SideUserObject * side_uo = dynamic_cast<SideUserObject*>(user_object);
+    SideUserObject * side_uo = dynamic_cast<SideUserObject *>(raw_ptr);
     const std::set<BoundaryID> & bnds = side_uo->boundaryIDs();
 
     // Add to the list of all SideUserObjects
@@ -276,10 +281,10 @@ UserObjectWarehouse::addUserObject(UserObject *user_object)
   }
 
   // Add an InternalSideUserObject
-  else if (dynamic_cast<InternalSideUserObject*>(user_object))
+  else if (dynamic_cast<InternalSideUserObject *>(raw_ptr))
   {
     // Extract the BlockIDs (see BlockRestrictable)
-    InternalSideUserObject * element_uo = dynamic_cast<InternalSideUserObject*>(user_object);
+    InternalSideUserObject * element_uo = dynamic_cast<InternalSideUserObject *>(raw_ptr);
     const std::set<SubdomainID> & blks = element_uo->blockIDs();
 
     // Add to the list of all SideUserObjects
@@ -294,10 +299,10 @@ UserObjectWarehouse::addUserObject(UserObject *user_object)
   }
 
   // Add a NodalUserObject
-  else if (dynamic_cast<NodalUserObject*>(user_object))
+  else if (dynamic_cast<NodalUserObject *>(raw_ptr))
   {
     // Extract the Boundary and Block Ids (see BoundaryRestrictable and BlockRestrictable)
-    NodalUserObject * nodal_uo = dynamic_cast<NodalUserObject*>(user_object);
+    NodalUserObject * nodal_uo = dynamic_cast<NodalUserObject *>(raw_ptr);
     const std::set<BoundaryID> & bnds = nodal_uo->boundaryIDs();
     const std::set<SubdomainID> & blks = nodal_uo->blockIDs();
 
@@ -324,7 +329,7 @@ UserObjectWarehouse::addUserObject(UserObject *user_object)
   // Add a GeneralUserObject
   else
   {
-    GeneralUserObject * general_uo = dynamic_cast<GeneralUserObject*>(user_object);
+    GeneralUserObject * general_uo = dynamic_cast<GeneralUserObject*>(raw_ptr);
 
     // FIXME: generic pps multithreaded
     _all_generic_user_objects.push_back(general_uo);
@@ -425,5 +430,26 @@ UserObjectWarehouse::genericUserObjects(GROUP group)
     return _post_generic_user_objects;
   default:
     mooseError("Bad value for Enum GROUP, must be ALL, PRE_AUX, or POST_AUX");
+  }
+}
+
+template<typename T>
+void
+UserObjectWarehouse::sortUserObjects(std::vector<T *> & uo_vector)
+{
+  try
+  {
+    // Sort based on dependencies
+    DependencyResolverInterface::sort(uo_vector.begin(), uo_vector.end());
+  }
+  catch(CyclicDependencyException<DependencyResolverInterface *> & e)
+  {
+    std::ostringstream oss;
+
+    oss << "Cyclic dependency detected in UserObject ordering:\n";
+    const std::multimap<DependencyResolverInterface *, DependencyResolverInterface *> & depends = e.getCyclicDependencies();
+    for (std::multimap<DependencyResolverInterface *, DependencyResolverInterface *>::const_iterator it = depends.begin(); it != depends.end(); ++it)
+      oss << (static_cast<T *>(it->first))->name() << " -> " << (static_cast<T *>(it->second))->name() << "\n";
+    mooseError(oss.str());
   }
 }

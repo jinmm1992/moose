@@ -1,0 +1,17 @@
+[Tests]
+  [./test]
+    type = 'Exodiff'
+    input = 'crysp.i'
+    exodiff = 'out.e'
+  [../]
+  [./test_fileread]
+    type = 'Exodiff'
+    input = 'crysp_fileread.i'
+    exodiff = 'crysp_fileread_out.e'
+  [../]
+  [./test_user_object]
+    type = 'Exodiff'
+    input = 'crysp_user_object.i'
+    exodiff = 'crysp_user_object_out.e'
+  [../]
+[]

@@ -20,7 +20,7 @@ InputParameters validParams<RichardsSUPGnone>();
  */
 class RichardsSUPGnone : public RichardsSUPG
 {
- public:
+public:
   RichardsSUPGnone(const std::string & name, InputParameters parameters);
 
   /// SUPG velocity = zero
@@ -49,6 +49,8 @@ class RichardsSUPGnone : public RichardsSUPG
 
   /// derivative of tau SUPG parameter wrt porepressure = zero
   Real dtauSUPG_dp(RealVectorValue /*vel*/, RealVectorValue /*dvel_dp*/, Real /*traceperm*/, RealVectorValue /*b*/, Real /*db2_dp*/) const;
+
+  bool SUPG_trivial() const;
 
 };
 

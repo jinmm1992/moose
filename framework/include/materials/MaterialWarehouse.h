@@ -19,8 +19,7 @@
 #include <map>
 #include <set>
 
-#include "MooseTypes.h"
-
+#include "Warehouse.h"
 
 class Material;
 
@@ -36,7 +35,7 @@ template <class T> class DependencyResolver;
  * 3) neighbor material - same as face material but on the neighboring element (used by DG)
  * 4) boundary material - defined on a surface (associated with a side set)
  */
-class MaterialWarehouse
+class MaterialWarehouse : public Warehouse<Material>
 {
 public:
   MaterialWarehouse();
@@ -52,27 +51,34 @@ public:
   void residualSetup();
   void jacobianSetup();
 
-  bool hasMaterials(SubdomainID block_id);
-  bool hasFaceMaterials(SubdomainID block_id);
-  bool hasNeighborMaterials(SubdomainID block_id);
-  bool hasBoundaryMaterials(BoundaryID boundary_id);
+  bool hasMaterials(SubdomainID block_id) const;
+  bool hasFaceMaterials(SubdomainID block_id) const;
+  bool hasNeighborMaterials(SubdomainID block_id) const;
+  bool hasBoundaryMaterials(BoundaryID boundary_id) const;
 
-  std::vector<Material *> & getMaterialsByName(const std::string & name);
+  const std::vector<Material *> & getMaterialsByName(const std::string & name) const;
 
-  std::vector<Material *> & getMaterials(){ return _mats;}
+  ///@{
+  /**
+   * These methods return vectors of Materials for various mesh entities used
+   * to compute properties during the system "solve".  The materials in these
+   * vectors are asked to recompute their values.
+   */
+  std::vector<Material *> & getMaterials();
   std::vector<Material *> & getMaterials(SubdomainID block_id);
   std::vector<Material *> & getFaceMaterials(SubdomainID block_id);
   std::vector<Material *> & getNeighborMaterials(SubdomainID block_id);
   std::vector<Material *> & getBoundaryMaterials(BoundaryID boundary_id);
+  ///@}
 
-  const std::vector<Material *> & active(SubdomainID block_id) { return _active_materials[block_id]; }
+  std::vector<Material *> & active(SubdomainID block_id);
 
   void updateMaterialDataState();
 
-  void addMaterial(std::vector<SubdomainID> blocks, Material *material);
-  void addFaceMaterial(std::vector<SubdomainID> blocks, Material *material);
-  void addNeighborMaterial(std::vector<SubdomainID> blocks, Material *material);
-  void addBoundaryMaterial(std::vector<BoundaryID> boundaries, Material *material);
+  void addMaterial(std::vector<SubdomainID> blocks, MooseSharedPointer<Material> & material);
+  void addFaceMaterial(std::vector<SubdomainID> blocks, MooseSharedPointer<Material> & material);
+  void addNeighborMaterial(std::vector<SubdomainID> blocks, MooseSharedPointer<Material> & material);
+  void addBoundaryMaterial(std::vector<BoundaryID> boundaries, MooseSharedPointer<Material> & material);
 
   /**
    * Get the list of blocks that materials are defined on
@@ -85,9 +91,6 @@ public:
    * @return The set of Boundary IDs
    */
   const std::set<BoundaryID> & boundaries() const { return _boundaries; }
-
-  /// This method displays a list of active materials and the properties they supply
-  void printMaterialMap() const;
 
   /// This method checks for coupled material properties to make sure that all retrieved properties are supplied
   void checkMaterialDependSanity() const;
@@ -120,10 +123,13 @@ protected:
   /// list of materials by name
   std::map<std::string, std::vector<Material *> > _mat_by_name;
 
-  /// All of the material objects this warehouse knows about
-  std::vector<Material *> _mats;
-
 private:
+  /**
+   * We are using MooseSharedPointer to handle the cleanup of the pointers at the end of execution.
+   * This is necessary since several warehouses might be sharing a single instance of a MooseObject.
+   */
+  std::vector<MooseSharedPointer<Material> > _all_ptrs;
+
   /**
    * This routine uses the Dependency Resolver to sort Materials based on dependencies they
    * might have on coupled values

@@ -31,7 +31,7 @@ PenetrationThread::PenetrationThread(SubProblem & subproblem,
                                      const MooseMesh & mesh,
                                      BoundaryID master_boundary,
                                      BoundaryID slave_boundary,
-                                     std::map<unsigned int, PenetrationInfo *> & penetration_info,
+                                     std::map<dof_id_type, PenetrationInfo *> & penetration_info,
                                      bool update_location,
                                      Real tangential_tolerance,
                                      bool do_normal_smoothing,
@@ -40,10 +40,10 @@ PenetrationThread::PenetrationThread(SubProblem & subproblem,
                                      std::vector<std::vector<FEBase *> > & fes,
                                      FEType & fe_type,
                                      NearestNodeLocator & nearest_node,
-                                     std::map<unsigned int, std::vector<unsigned int> > & node_to_elem_map,
-                                     std::vector< unsigned int > & elem_list,
-                                     std::vector< unsigned short int > & side_list,
-                                     std::vector< short int > & id_list) :
+                                     std::map<dof_id_type, std::vector<dof_id_type> > & node_to_elem_map,
+                                     std::vector<dof_id_type> & elem_list,
+                                     std::vector<unsigned short int> & side_list,
+                                     std::vector<boundary_id_type> & id_list) :
   _subproblem(subproblem),
   _mesh(mesh),
   _master_boundary(master_boundary),
@@ -177,11 +177,11 @@ PenetrationThread::operator() (const NodeIdRange & range)
     if (!info_set)
     {
       const Node * closest_node = _nearest_node.nearestNode(node.id());
-      std::vector<unsigned int> & closest_elems = _node_to_elem_map[closest_node->id()];
+      std::vector<dof_id_type> & closest_elems = _node_to_elem_map[closest_node->id()];
 
       for (unsigned int j=0; j<closest_elems.size(); j++)
       {
-        unsigned int elem_id = closest_elems[j];
+        dof_id_type elem_id = closest_elems[j];
         const Elem * elem = _mesh.elem(elem_id);
 
         std::vector<PenetrationInfo*> thisElemInfo;
@@ -456,40 +456,33 @@ PenetrationThread::competeInteractions(PenetrationInfo * pi1,
 
   if (pi1->_tangential_distance > _tangential_tolerance &&
       pi2->_tangential_distance > _tangential_tolerance) //out of tol on both faces
-  {
     result=NEITHER_WINS;
-  }
+
   else if (pi1->_tangential_distance == 0.0 &&
       pi2->_tangential_distance > 0.0)                   //on face 1, off face 2
-  {
     result=FIRST_WINS;
-  }
+
   else if (pi2->_tangential_distance == 0.0 &&
            pi1->_tangential_distance > 0.0)              //on face 2, off face 1
-  {
     result=SECOND_WINS;
-  }
+
   else if (pi1->_tangential_distance <= _tangential_tolerance &&
            pi2->_tangential_distance > _tangential_tolerance) //in face 1 tol, out of face 2 tol
-  {
     result=FIRST_WINS;
-  }
+
   else if (pi2->_tangential_distance <= _tangential_tolerance &&
            pi1->_tangential_distance > _tangential_tolerance) //in face 2 tol, out of face 1 tol
-  {
     result=SECOND_WINS;
-  }
+
   else if (pi1->_tangential_distance == 0.0 &&
            pi2->_tangential_distance == 0.0)                  //on both faces
   {
     if (pi1->_distance >= 0.0 && pi2->_distance < 0.0)  //favor face with positive distance (penetrated)
-    {
       result=FIRST_WINS;
-    }
+
     else if (pi2->_distance >= 0.0 && pi1->_distance < 0.0)
-    {
       result=SECOND_WINS;
-    }
+
     else if (std::abs(pi1->_distance) < std::abs(pi2->_distance)) //otherwise, favor the closer face
     {
       //TODO: This could cause an abrupt jump from one face to the other.  Smooth this transition
@@ -507,13 +500,10 @@ PenetrationThread::competeInteractions(PenetrationInfo * pi1,
       //TODO: This could cause an abrupt jump from one face to the other.  Smooth this transition
       //Moose::out<<"Case3:  n: "<<pi1->_node->id()<<" e1: "<<pi1->_elem->id()<<" e2: "<<pi2->_elem->id()<<std::endl;
       if (pi1->_elem->id()<pi2->_elem->id())
-      {
         result=FIRST_WINS;
-      }
+
       else
-      {
         result=SECOND_WINS;
-      }
     }
   }
   else if (pi1->_tangential_distance <= _tangential_tolerance &&
@@ -529,50 +519,38 @@ PenetrationThread::competeInteractions(PenetrationInfo * pi1,
     else if (cer == EDGE_AND_COMMON_NODE) //off side of face, off corner of another face.  Favor the off-side face
     {
       if (pi1->_off_edge_nodes.size() == pi2->_off_edge_nodes.size())
-      {
         mooseError("Invalid off_edge_nodes counts");
-      }
+
       else if (pi1->_off_edge_nodes.size()==2)
-      {
         result=FIRST_WINS;
-      }
+
       else if (pi2->_off_edge_nodes.size()==2)
-      {
         result=SECOND_WINS;
-      }
+
       else
-      {
         mooseError("Invalid off_edge_nodes counts");
-      }
     }
     else //Use the same logic as in the on-face condition (above).  A little copy-paste can't hurt...
     {
       if (pi1->_distance >= 0.0 && pi2->_distance < 0.0)  //favor face with positive distance (penetrated)
-      {
         result=FIRST_WINS;
-      }
+
       else if (pi2->_distance >= 0.0 && pi1->_distance < 0.0)
-      {
         result=SECOND_WINS;
-      }
+
       else if (std::abs(pi1->_distance) < std::abs(pi2->_distance)) //otherwise, favor the closer face
-      {
         result=FIRST_WINS;
-      }
+
       else if (std::abs(pi2->_distance) < std::abs(pi1->_distance)) //otherwise, favor the closer face
-      {
         result=SECOND_WINS;
-      }
+
       else //completely equal.  Favor the one with a smaller element id (for repeatibility)
       {
         if (pi1->_elem->id()<pi2->_elem->id())
-        {
           result=FIRST_WINS;
-        }
+
         else
-        {
           result=SECOND_WINS;
-        }
       }
     }
   }
@@ -788,7 +766,7 @@ PenetrationThread::restrictPointToSpecifiedEdgeOfFace(Point& p,
   for (unsigned int i(0); i<edge_nodes.size(); ++i)
   {
     unsigned int local_index = side->get_node_index(edge_nodes[i]);
-    if (local_index == Node::invalid_id)
+    if (local_index == libMesh::invalid_uint)
       mooseError("Side does not contain node");
     local_node_indices.push_back(local_index);
   }
@@ -1200,7 +1178,7 @@ PenetrationThread::computeSlip(FEBase & fe, PenetrationInfo & info)
   //   original projected position of slave node
   std::vector<Point> points(1);
   points[0] = info._starting_closest_point_ref;
-  libMesh::AutoPtr<Elem> side = (info._starting_elem->build_side(info._starting_side_num,false));
+  AutoPtr<Elem> side = info._starting_elem->build_side(info._starting_side_num, false);
   fe.reinit(side.get(), &points);
   const std::vector<Point> & starting_point = fe.get_xyz();
   info._incremental_slip = info._closest_point - starting_point[0];
@@ -1279,7 +1257,7 @@ PenetrationThread::getSmoothingFacesAndWeights(PenetrationInfo* info,
 {
   const Elem* side = info->_side;
   const Point& p=info->_closest_point_ref;
-  std::set<unsigned int> elems_to_exclude;
+  std::set<dof_id_type> elems_to_exclude;
   elems_to_exclude.insert(info->_elem->id());
   const Node* slave_node = info->_node;
 
@@ -1505,13 +1483,13 @@ PenetrationThread::getSmoothingEdgeNodesAndWeights(const Point& p,
 
 void
 PenetrationThread::getInfoForFacesWithCommonNodes(const Node *slave_node,
-                                                  const std::set<unsigned int> &elems_to_exclude,
+                                                  const std::set<dof_id_type> &elems_to_exclude,
                                                   const std::vector<const Node*> edge_nodes,
                                                   std::vector<PenetrationInfo*> &face_info_comm_edge,
                                                   std::vector<PenetrationInfo*> & p_info)
 {
   //elems connected to a node on this edge, find one that has the same corners as this, and is not the current elem
-  std::vector<unsigned int> & elems_connected_to_node = _node_to_elem_map[edge_nodes[0]->id()]; //just need one of the nodes
+  std::vector<dof_id_type> & elems_connected_to_node = _node_to_elem_map[edge_nodes[0]->id()]; //just need one of the nodes
 
   std::vector<const Elem*> elems_connected_to_edge;
 
@@ -1617,7 +1595,10 @@ PenetrationThread::createInfoForElem(std::vector<PenetrationInfo*> &thisElemInfo
 {
   std::vector<unsigned int> sides;
   //TODO: After libMesh update, add this line to MooseMesh.h, call sidesWithBoundaryID,  delete getSidesOnMasterBoundary, and delete vectors used by it
-//  void sidesWithBoundaryID(std::vector<unsigned int>& sides, const Elem * const elem, const BoundaryID boundary_id) const { _mesh.boundary_info->sides_with_boundary_id(sides, elem, boundary_id); }
+  //  void sidesWithBoundaryID(std::vector<unsigned int>& sides, const Elem * const elem, const BoundaryID boundary_id) const
+  // {
+  //   _mesh.get_boundary_info().sides_with_boundary_id(sides, elem, boundary_id);
+  // }
   getSidesOnMasterBoundary(sides, elem);
 //  _mesh.sidesWithBoundaryID(sides, elem, _master_boundary);
 

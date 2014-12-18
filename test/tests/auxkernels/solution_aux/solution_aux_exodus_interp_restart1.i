@@ -39,8 +39,13 @@
   [./soln]
     type = SolutionUserObject
     mesh = cubesource.e
-    nodal_variables = source_nodal
+    system_variables = source_nodal
+    execute_on = 'initial timestep_begin'
   [../]
+[]
+[Problem]
+  type = FEProblem
+  use_legacy_uo_initialization = false
 []
 
 [BCs]
@@ -64,10 +69,7 @@
 
 [Outputs]
   exodus = true
-  [./out]
-    type = Checkpoint
-    num_files = 1
-  [../]
+  checkpoint = true
   [./console]
     type = Console
     perf_log = true

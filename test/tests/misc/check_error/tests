@@ -8,7 +8,7 @@
   [./checked_pointer_param_test]
     type = 'RunException'
     input = 'checked_pointer_param_test.i'
-    expect_err = "_fe_problem is NULL."
+    expect_err = "quotes around a vector"
   [../]
 
   [./add_aux_variable_multiple_test]
@@ -53,13 +53,7 @@
     expect_err = "Unknown variable"
   [../]
 
-  [./bad_material_block_test]
-    type = 'RunException'
-    input = 'bad_material_block_test.i'
-    expect_err = "Material block \S+ specified in the input file does not exist"
-  [../]
-
-  [./bad_material_test]
+  [./Badd_material_test]
     type = 'RunException'
     input = 'bad_material_test.i'
     expect_err = "A '\w+' is not a registered object"
@@ -82,6 +76,20 @@
     type = 'RunException'
     input = 'deprecated_block_test.i'
     expect_err = "Input file block '\S+' has been deprecated."
+  [../]
+
+  [./deprecated_param_default]
+    type = 'RunException'
+    input = 'deprecated_param_test.i'
+    expect_err = "The parameter \w+ is deprecated."
+    cli_args = '--error Kernels/nan/deprecated_default=1'
+  [../]
+
+  [./deprecated_param_no_default]
+    type = 'RunException'
+    input = 'deprecated_param_test.i'
+    expect_err = "The parameter \w+ is deprecated."
+    cli_args = '--error Kernels/nan/deprecated_no_default=1'
   [../]
 
   [./double_restrict_uo_test]
@@ -231,7 +239,7 @@
   [./missing_material_prop_test2]
     type = 'RunException'
     input = 'missing_material_prop_test2.i'
-    expect_err = "Material property 'diff1' is not defined on block \d+"
+    expect_err = "Material property '\w+', requested by '\w+' is not defined on block \d+"
   [../]
 
   [./bad_stateful_material_only_old]
@@ -245,12 +253,6 @@
     input = 'bad_stateful_material.i'
     expect_err = "Material '\S+' has stateful properties declared but not associated"
     cli_args = 'Materials/stateful_mat/declare_only_older=true'
-  [../]
-
-  [./missing_mesh_bcs_test]
-    type = 'RunException'
-    input = 'missing_mesh_bcs_test.i'
-    expect_err = "The following boundary ids from your input file do not exist in the input mesh \d+"
   [../]
 
   [./missing_mesh_test]
@@ -300,6 +302,12 @@
     # error on newer versions of PETSc.
   [../]
 
+  [./nan_no_trap_fpe_test]
+    type = 'RunApp'
+    input = 'nan_test.i'
+    cli_args = '--no-trap-fpe'
+  [../]
+
   [./nan_test_transient]
     type = 'RunException'
     input = 'nan_test_transient.i'
@@ -326,12 +334,6 @@
     type = 'RunApp'
     input = 'override_name_variable_test.i'
     expect_out = "The following variables were overridden or supplied multiple times:"
-  [../]
-
-  [./pps_bad_block_test]
-    type = 'RunException'
-    input = 'pps_bad_block_test.i'
-    expect_err = "One or more UserObjects is referencing a nonexistent block"
   [../]
 
   [./rz_3d_error_check_test]
@@ -361,9 +363,21 @@
 
   [./unused_param_test]
     type = 'RunApp'
-    expect_out = "WARNING: The following parameters were unused in your input file"
+    expect_out = "The following parameters were unused in your input file"
     input = 'unused_param_test.i'
     cli_args = '--warn-unused'
+    # Don't allow --error-unused on this test
+    skip_test_harness_cli_args = true
+  [../]
+
+  [./unused_param_test_cli]
+    type = 'RunApp'
+    expect_out = "The following parameters were unused on the command line"
+    input = 'unused_param_test.i'
+    cli_args = '--warn-unused Executioner/unused_param=true'
+    # Don't allow --error-unused on this test
+    skip_test_harness_cli_args = true
+    max_parallel = 1 # warning can mix on multiple processes
   [../]
 
   [./uo_pps_name_collision_test]
@@ -415,5 +429,11 @@
     input = 'nodal_value_off_block.i'
     expect_err = 'Node 0 does not contain any dofs for the v variable'
     method = 'dbg'
+  [../]
+
+  [./lin_comb_incomp_len]
+    type = 'RunException'
+    input = 'lin_comb_incomp_len.i'
+    expect_err = 'lc-aux: the length of v and w has to be the same'
   [../]
 []

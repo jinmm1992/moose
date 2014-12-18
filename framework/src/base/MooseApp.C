@@ -21,6 +21,7 @@
 #include "YAMLFormatter.h"
 #include "PetscSupport.h"
 #include "Conversion.h"
+#include "CommandLine.h"
 
 // libMesh includes
 #include "libmesh/mesh_refinement.h"
@@ -37,34 +38,45 @@ InputParameters validParams<MooseApp>()
   params.addCommandLineParam<std::string>("input_file", "-i <input_file>", "Specify an input file");
   params.addCommandLineParam<std::string>("mesh_only", "--mesh-only", "Setup and Output the input mesh only.");
 
-  params.addCommandLineParam<bool>("show_input", "--show-input", "Shows the parsed input file before running the simulation.");
+  params.addCommandLineParam<bool>("show_input", "--show-input", false, "Shows the parsed input file before running the simulation.");
+  params.addCommandLineParam<bool>("no_color", "--no-color", false, "Disable coloring of all Console outputs.");
 
-  params.addCommandLineParam<bool>("help", "-h --help", "Displays CLI usage statement.");
+  params.addCommandLineParam<bool>("help", "-h --help", false, "Displays CLI usage statement.");
 
   params.addCommandLineParam<std::string>("dump", "--dump [search_string]", "Shows a dump of available input file syntax.");
   params.addCommandLineParam<std::string>("yaml", "--yaml", "Dumps input file syntax in YAML format.");
-  params.addCommandLineParam<bool>("syntax", "--syntax", "Dumps the associated Action syntax paths ONLY");
+  params.addCommandLineParam<bool>("syntax", "--syntax", false, "Dumps the associated Action syntax paths ONLY");
 
-  params.addCommandLineParam<unsigned int>("n_threads", "--n-threads=<n>", 1, "Runs the specified number of threads (Intel TBB) per process");
+  params.addCommandLineParam<unsigned int>("n_threads", "--n-threads=<n>", 1, "Runs the specified number of threads per process");
 
-  params.addCommandLineParam<bool>("warn_unused", "-w --warn-unused", "Warn about unused input file options");
-  params.addCommandLineParam<bool>("error_unused", "-e --error-unused", "Error when encountering unused input file options");
-  params.addCommandLineParam<bool>("error_override", "-o --error-override", "Error when encountering overridden or parameters supplied multiple times");
+  params.addCommandLineParam<bool>("warn_unused", "-w --warn-unused", false, "Warn about unused input file options");
+  params.addCommandLineParam<bool>("error_unused", "-e --error-unused", false, "Error when encountering unused input file options");
+  params.addCommandLineParam<bool>("error_override", "-o --error-override", false, "Error when encountering overridden or parameters supplied multiple times");
 
-  params.addCommandLineParam<bool>("parallel_mesh", "--parallel-mesh", "The libMesh Mesh underlying MooseMesh should always be a ParallelMesh");
+  params.addCommandLineParam<bool>("parallel_mesh", "--parallel-mesh", false, "The libMesh Mesh underlying MooseMesh should always be a ParallelMesh");
 
   params.addCommandLineParam<unsigned int>("refinements", "-r <n>", 0, "Specify additional initial uniform refinements for automatic scaling");
 
   params.addCommandLineParam<std::string>("recover", "--recover [file_base]", "Continue the calculation.  If file_base is omitted then the most recent recovery file will be utilized");
 
-  params.addCommandLineParam<bool>("half_transient", "--half-transient", "When true the simulation will only run half of its specified transient (ie half the timesteps).  This is useful for testing recovery and restart");
+  params.addCommandLineParam<bool>("half_transient", "--half-transient", false, "When true the simulation will only run half of its specified transient (ie half the timesteps).  This is useful for testing recovery and restart");
 
+  // No default on these two options, they must not both be valid
   params.addCommandLineParam<bool>("trap_fpe", "--trap-fpe", "Enable Floating Point Exception handling in critical sections of code.  This is enabled automatically in DEBUG mode");
+  params.addCommandLineParam<bool>("no_trap_fpe", "--no-trap-fpe", "Disable Floating Point Exception handling in critical sections of code when using DEBUG mode.");
 
-  params.addCommandLineParam<bool>("timing", "-t --timing", "Enable all performance logging for timing purposes. This will disable all screen output of performance logs for all Console objects.");
+  params.addCommandLineParam<bool>("error", "--error", false, "Turn all warnings into errors");
+
+  params.addCommandLineParam<bool>("timing", "-t --timing", false, "Enable all performance logging for timing purposes. This will disable all screen output of performance logs for all Console objects.");
+
+  // Legacy Flags
+  params.addParam<bool>("use_legacy_uo_aux_computation", true, "Set to true to have MOOSE recompute *all* AuxKernel types every time *any* UserObject type is executed.\nThis behavoir is non-intuitive and will be removed late fall 2014, The default is controlled through MooseApp");
+  params.addParam<bool>("use_legacy_uo_initialization", true, "Set to true to have MOOSE compute all UserObjects and Postprocessors during the initial setup phase of the problem recompute *all* AuxKernel types every time *any* UserObject type is executed.\nThis behavoir is non-intuitive and will be removed late fall 2014, The default is controlled through MooseApp");
 
   params.addPrivateParam<int>("_argc");
   params.addPrivateParam<char**>("_argv");
+  params.addPrivateParam<MooseSharedPointer<CommandLine> >("_command_line");
+  params.addPrivateParam<MooseSharedPointer<Parallel::Communicator> >("_comm");
 
   return params;
 }
@@ -80,22 +92,27 @@ void insertNewline(std::stringstream &oss, std::streampos &begin, std::streampos
   }
 }
 
-MooseApp::MooseApp(const std::string & name, InputParameters parameters):
-    ParallelObject(*parameters.get<Parallel::Communicator *>("_comm")), // Can't call getParam() before pars is set
+// Free function for removing cli flags
+bool isFlag(const std::string s)
+{
+  return s.length() && s[0] == '-';
+}
+
+MooseApp::MooseApp(const std::string & name, InputParameters parameters) :
+    ParallelObject(*parameters.get<MooseSharedPointer<Parallel::Communicator> >("_comm")), // Can't call getParam() before pars is set
     _name(name),
     _pars(parameters),
-    _comm(getParam<Parallel::Communicator *>("_comm")),
+    _comm(getParam<MooseSharedPointer<Parallel::Communicator> >("_comm")),
     _output_position_set(false),
     _start_time_set(false),
     _start_time(0.0),
     _global_time_offset(0.0),
-    _command_line(NULL),
+    _alternate_output_warehouse(NULL),
+    _output_warehouse(new OutputWarehouse),
     _action_factory(*this),
     _action_warehouse(*this, _syntax, _action_factory),
     _parser(*this, _action_warehouse),
-    _executioner(NULL),
     _use_nonlinear(true),
-    _sys_info(NULL),
     _enable_unused_check(WARN_UNUSED),
     _factory(*this),
     _error_overridden(false),
@@ -105,62 +122,56 @@ MooseApp::MooseApp(const std::string & name, InputParameters parameters):
     _recover(false),
     _restart(false),
     _half_transient(false),
-    _output_warehouse(new OutputWarehouse),
-    _alternate_output_warehouse(NULL)
+    _legacy_uo_aux_computation_default(getParam<bool>("use_legacy_uo_aux_computation")),
+    _legacy_uo_initialization_default(getParam<bool>("use_legacy_uo_initialization"))
 {
   if (isParamValid("_argc") && isParamValid("_argv"))
   {
     int argc = getParam<int>("_argc");
     char ** argv = getParam<char**>("_argv");
 
-    _sys_info = new SystemInfo(argc, argv);
-    _command_line = new CommandLine(argc, argv);
-    _command_line->addCommandLineOptionsFromParams(_pars);
+    _sys_info = MooseSharedPointer<SystemInfo>(new SystemInfo(argc, argv));
   }
+  if (isParamValid("_command_line"))
+    _command_line = getParam<MooseSharedPointer<CommandLine> >("_command_line");
+  else
+    mooseError("Valid CommandLine object required");
 }
 
 MooseApp::~MooseApp()
 {
-  delete _command_line;
-  delete _sys_info;
-  delete _executioner;
   _action_warehouse.clear();
 
   // MUST be deleted before _comm is destroyed!
   delete _output_warehouse;
-
-  // Note: Communicator MUST be destroyed last because everything else is using it!
-  delete _comm;
 }
 
 void
 MooseApp::setupOptions()
 {
-  if (isParamValid("error_unused"))
+  if (getParam<bool>("error_unused"))
     setCheckUnusedFlag(true);
-  else if (isParamValid("warn_unused"))
+  else if (getParam<bool>("warn_unused"))
     setCheckUnusedFlag(false);
 
-  if (isParamValid("error_override"))
+  if (getParam<bool>("error_override"))
     setErrorOverridden();
 
-  if (isParamValid("parallel_mesh"))
-    _parallel_mesh_on_command_line = true;
+  _parallel_mesh_on_command_line = getParam<bool>("parallel_mesh");
+  _half_transient = getParam<bool>("half_transient");
+  _pars.set<bool>("timing") = getParam<bool>("timing");
 
-  if (isParamValid("half_transient"))
-    _half_transient = true;
-
-  // Set the timing parameter (see src/outputs/Console.C)
-  if (isParamValid("timing"))
-    _pars.set<bool>("timing") = true;
-  else
-    _pars.set<bool>("timing") = false;
-
+  if (isParamValid("trap_fpe") && isParamValid("no_trap_fpe"))
+    mooseError("Cannot use both \"--trap-fpe\" and \"--no-trap-fpe\" flags.");
   if (isParamValid("trap_fpe"))
-    // Setting Global Variable
-    Moose::__trap_fpe = true;
+    Moose::_trap_fpe = true;
+  else if (isParamValid("no_trap_fpe"))
+    Moose::_trap_fpe = false;
 
-  if (isParamValid("help"))
+  Moose::_warnings_are_errors = getParam<bool>("error");
+  Moose::_color_console = !getParam<bool>("no_color");
+
+  if (getParam<bool>("help"))
   {
     _command_line->printUsage();
     _ready_to_exit = true;
@@ -199,7 +210,7 @@ MooseApp::setupOptions()
 
     _ready_to_exit = true;
   }
-  else if (isParamValid("syntax"))
+  else if (getParam<bool>("syntax"))
   {
     std::multimap<std::string, Syntax::ActionInfo> syntax = _syntax.getAssociatedActions();
     Moose::out << "**START SYNTAX DATA**\n";
@@ -268,28 +279,32 @@ MooseApp::runInputFile()
   if (_ready_to_exit)
     return;
 
-  // Print the input file syntax if requested
-  if (isParamValid("show_input"))
-  {
-    _action_warehouse.printInputFile(Moose::out);
-  }
-
   _action_warehouse.executeAllActions();
   _executioner = _action_warehouse.executioner();
 
-  // If requested, see if there are unidentified name/value pairs in the input file
-  if (isParamValid("error_unused") || _enable_unused_check == ERROR_UNUSED)
+  bool error_unused = getParam<bool>("error_unused") || _enable_unused_check == ERROR_UNUSED;
+  bool warn_unused = getParam<bool>("warn_unused") || _enable_unused_check == WARN_UNUSED;
+
+  if (error_unused || warn_unused)
   {
+    // Check the input file parameters
     std::vector<std::string> all_vars = _parser.getPotHandle()->get_variable_names();
-    _parser.checkUnidentifiedParams(all_vars, true);
-  }
-  else if (isParamValid("warn_unused") || _enable_unused_check == WARN_UNUSED)
-  {
-    std::vector<std::string> all_vars = _parser.getPotHandle()->get_variable_names();
-    _parser.checkUnidentifiedParams(all_vars, _enable_unused_check == ERROR_UNUSED);
+    _parser.checkUnidentifiedParams(all_vars, error_unused, true);
+
+    // Only check CLI parameters on the main application
+    // TODO: Add support for SubApp overrides and checks #4119
+    if (_name == "main")
+    {
+      // Check the CLI parameters
+      all_vars = _command_line->getPot()->get_variable_names();
+      // Remove flags, they aren't "input" parameters
+      all_vars.erase( std::remove_if(all_vars.begin(), all_vars.end(), isFlag), all_vars.end() );
+
+      _parser.checkUnidentifiedParams(all_vars, error_unused, false);
+    }
   }
 
-  if (isParamValid("error_override") || _error_overridden)
+  if (getParam<bool>("error_override") || _error_overridden)
     _parser.checkOverriddenParams(true);
   else
     _parser.checkOverriddenParams(false);
@@ -306,7 +321,7 @@ MooseApp::executeExecutioner()
   if (_executioner)
   {
 #ifdef LIBMESH_HAVE_PETSC
-    Moose::PetscSupport::petscSetupOutput(_command_line);
+    Moose::PetscSupport::petscSetupOutput(_command_line.get());
 #endif
     _executioner->init();
     _executioner->execute();
@@ -329,7 +344,7 @@ MooseApp::meshOnly(std::string mesh_file_name)
   _action_warehouse.executeActionsWithAction("setup_mesh_complete");
 
   // uniform refinement
-  MooseMesh * mesh = _action_warehouse.mesh();
+  MooseSharedPointer<MooseMesh> & mesh = _action_warehouse.mesh();
   MeshRefinement mesh_refinement(mesh->getMesh());
   mesh_refinement.uniformly_refine(mesh->uniformRefineLevel());
 
@@ -364,11 +379,6 @@ MooseApp::meshOnly(std::string mesh_file_name)
     // Just write the file using the name requested by the user.
     mesh->getMesh().write(mesh_file_name);
   }
-
-  // Since we are not going to create a problem the mesh
-  // will not get cleaned up, so we'll do it here
-  delete mesh;
-  delete _action_warehouse.displacedMesh();
 }
 
 void
@@ -389,6 +399,18 @@ MooseApp::setErrorOverridden()
   _error_overridden = true;
 }
 
+bool &
+MooseApp::legacyUoAuxComputationDefault()
+{
+  return _legacy_uo_aux_computation_default;
+}
+
+bool &
+MooseApp::legacyUoInitializationDefault()
+{
+  return _legacy_uo_initialization_default;
+}
+
 void
 MooseApp::run()
 {
@@ -400,12 +422,11 @@ MooseApp::run()
 void
 MooseApp::setOutputPosition(Point p)
 {
-
   _output_position_set = true;
   _output_position = p;
   _output_warehouse->meshChanged();
 
-  if (_executioner != NULL)
+  if (_executioner.get() != NULL)
     _executioner->parentOutputPositionChanged();
 }
 

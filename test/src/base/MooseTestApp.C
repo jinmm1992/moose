@@ -54,8 +54,11 @@
 #include "PHarmonic.h"
 #include "PMassEigenKernel.h"
 #include "CoupledEigenKernel.h"
+#include "ConsoleMessageKernel.h"
+#include "WrongJacobianDiffusion.h"
 
 #include "CoupledAux.h"
+#include "CoupledScalarAux.h"
 #include "CoupledGradAux.h"
 #include "PolyConstantAux.h"
 #include "MMSConstantAux.h"
@@ -67,6 +70,7 @@
 #include "UniqueIDAux.h"
 #include "RandomAux.h"
 #include "PostprocessorAux.h"
+#include "FluxAverageAux.h"
 
 #include "MTBC.h"
 #include "PolyCoupledDirichletBC.h"
@@ -103,6 +107,9 @@
 #include "BadStatefulMaterial.h"
 #include "OutputTestMaterial.h"
 #include "SumMaterial.h"
+#include "VecRangeCheckMaterial.h"
+#include "DerivativeMaterialInterfaceTestProvider.h"
+#include "DerivativeMaterialInterfaceTestClient.h"
 
 #include "DGMatDiffusion.h"
 #include "DGMDDBC.h"
@@ -142,6 +149,8 @@
 #include "InsideValuePPS.h"
 #include "BoundaryValuePPS.h"
 #include "NumInternalSides.h"
+#include "NumElemQPs.h"
+#include "NumSideQPs.h"
 #include "ElementL2Diff.h"
 
 // Functions
@@ -157,9 +166,13 @@
 #include "FrontSource.h"
 #include "MaterialPointSource.h"
 #include "StatefulPointSource.h"
+#include "CachingPointSource.h"
+#include "BadCachingPointSource.h"
+#include "NonlinearSource.h"
 
 // markers
 #include "RandomHitMarker.h"
+#include "QPointMarker.h"
 
 // meshes
 #include "StripeMesh.h"
@@ -172,8 +185,11 @@
 #include "MooseTestProblem.h"
 #include "FailingProblem.h"
 
+// actions
 #include "ConvDiffMetaAction.h"
 #include "AddLotsOfAuxVariablesAction.h"
+#include "ApplyCoupledVariablesTestAction.h"
+#include "AddLotsOfDiffusion.h"
 
 // From MOOSE
 #include "AddVariableAction.h"
@@ -185,6 +201,9 @@ template<>
 InputParameters validParams<MooseTestApp>()
 {
   InputParameters params = validParams<MooseApp>();
+
+  params.set<bool>("use_legacy_uo_initialization") = true;
+  params.set<bool>("use_legacy_uo_aux_computation") = false;
   return params;
 }
 
@@ -264,9 +283,12 @@ MooseTestApp::registerObjects(Factory & factory)
   registerKernel(PHarmonic);
   registerKernel(PMassEigenKernel);
   registerKernel(CoupledEigenKernel);
+  registerKernel(ConsoleMessageKernel);
+  registerKernel(WrongJacobianDiffusion);
 
   // Aux kernels
   registerAux(CoupledAux);
+  registerAux(CoupledScalarAux);
   registerAux(CoupledGradAux);
   registerAux(PolyConstantAux);
   registerAux(MMSConstantAux);
@@ -278,6 +300,7 @@ MooseTestApp::registerObjects(Factory & factory)
   registerAux(UniqueIDAux);
   registerAux(RandomAux);
   registerAux(PostprocessorAux);
+  registerAux(FluxAverageAux);
 
   // DG kernels
   registerDGKernel(DGMatDiffusion);
@@ -327,6 +350,10 @@ MooseTestApp::registerObjects(Factory & factory)
   registerMaterial(BadStatefulMaterial);
   registerMaterial(OutputTestMaterial);
   registerMaterial(SumMaterial);
+  registerMaterial(VecRangeCheckMaterial);
+  registerMaterial(DerivativeMaterialInterfaceTestProvider);
+  registerMaterial(DerivativeMaterialInterfaceTestClient);
+
 
   registerScalarKernel(ExplicitODE);
   registerScalarKernel(ImplicitODEx);
@@ -347,6 +374,9 @@ MooseTestApp::registerObjects(Factory & factory)
   registerDiracKernel(FrontSource);
   registerDiracKernel(MaterialPointSource);
   registerDiracKernel(StatefulPointSource);
+  registerDiracKernel(CachingPointSource);
+  registerDiracKernel(BadCachingPointSource);
+  registerDiracKernel(NonlinearSource);
 
   // meshes
   registerObject(StripeMesh);
@@ -375,9 +405,12 @@ MooseTestApp::registerObjects(Factory & factory)
   registerPostprocessor(TestCopyInitialSolution);
   registerPostprocessor(BoundaryValuePPS);
   registerPostprocessor(NumInternalSides);
+  registerPostprocessor(NumElemQPs);
+  registerPostprocessor(NumSideQPs);
   registerPostprocessor(ElementL2Diff);
 
   registerMarker(RandomHitMarker);
+  registerMarker(QPointMarker);
 
   registerExecutioner(ExceptionSteady);
   registerExecutioner(SteadyTransientExecutioner);
@@ -396,7 +429,18 @@ MooseTestApp::associateSyntax(Syntax & syntax, ActionFactory & action_factory)
   // and add more
   registerAction(ConvDiffMetaAction, "meta_action");
   registerAction(AddLotsOfAuxVariablesAction, "meta_action");
+
+  registerAction(AddLotsOfDiffusion, "add_variable");
+  registerAction(AddLotsOfDiffusion, "add_kernel");
+  registerAction(AddLotsOfDiffusion, "add_bc");
+
+
   syntax.registerActionSyntax("ConvDiffMetaAction", "ConvectionDiffusion");
   syntax.registerActionSyntax("AddAuxVariableAction", "MoreAuxVariables/*", "add_aux_variable");
   syntax.registerActionSyntax("AddLotsOfAuxVariablesAction", "LotsOfAuxVariables/*", "add_variable");
+
+  registerAction(ApplyCoupledVariablesTestAction, "meta_action");
+  syntax.registerActionSyntax("ApplyCoupledVariablesTestAction", "ApplyInputParametersTest");
+
+  syntax.registerActionSyntax("AddLotsOfDiffusion", "Testing/LotsOfDiffusion/*");
 }

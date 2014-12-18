@@ -18,10 +18,12 @@
 //MOOSE includes
 #include "MooseObject.h"
 #include "SetupInterface.h"
+#include "FunctionInterface.h"
 #include "ParallelUniqueId.h"
 #include "SubProblem.h"
 #include "Restartable.h"
 #include "MooseMesh.h"
+#include "MeshChangedInterface.h"
 
 //libMesh includes
 #include "libmesh/libmesh_common.h"
@@ -39,7 +41,9 @@ InputParameters validParams<UserObject>();
 class UserObject :
   public MooseObject,
   public SetupInterface,
-  public Restartable
+  public FunctionInterface,
+  public Restartable,
+  public MeshChangedInterface
 {
 public:
   UserObject(const std::string & name, InputParameters params);
