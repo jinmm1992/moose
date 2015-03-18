@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "ContactPressureAux.h"
 
 #include "NodalArea.h"
@@ -11,7 +17,7 @@ InputParameters validParams<ContactPressureAux>()
   InputParameters params = validParams<AuxKernel>();
   params.addRequiredCoupledVar("nodal_area", "The nodal area");
   params.addRequiredParam<BoundaryName>("paired_boundary", "The boundary to be penetrated");
-  params.set<MultiMooseEnum>("execute_on") = "jacobian";
+  params.set<MultiMooseEnum>("execute_on") = "nonlinear";
   return params;
 }
 

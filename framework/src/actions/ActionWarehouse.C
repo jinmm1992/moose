@@ -23,6 +23,7 @@
 #include "AddAuxVariableAction.h"
 #include "XTermConstants.h"
 #include "InfixIterator.h"
+#include "MemData.h"
 
 ActionWarehouse::ActionWarehouse(MooseApp & app, Syntax & syntax, ActionFactory & factory) :
     Warehouse<Action>(),
@@ -179,6 +180,12 @@ ActionWarehouse::getActionsByName(const std::string & task) const
   return it->second;
 }
 
+bool
+ActionWarehouse::hasActions(const std::string & task) const
+{
+  return _action_blocks.find(task) != _action_blocks.end();
+}
+
 void
 ActionWarehouse::buildBuildableActions(const std::string &task)
 {
@@ -301,9 +308,6 @@ ActionWarehouse::executeAllActions()
   for (std::vector<std::string>::iterator it = _ordered_names.begin(); it != _ordered_names.end(); ++it)
   {
     std::string task = *it;
-
-    // Set the current task name
-    _current_task = task;
     executeActionsWithAction(task);
   }
 }
@@ -311,13 +315,29 @@ ActionWarehouse::executeAllActions()
 void
 ActionWarehouse::executeActionsWithAction(const std::string & task)
 {
+  // Set the current task name
+  _current_task = task;
+
   for (ActionIterator act_iter = actionBlocksWithActionBegin(task);
        act_iter != actionBlocksWithActionEnd(task);
        ++act_iter)
   {
     if (_show_actions)
-      _console << "[DBG][ACT] " << (*act_iter)->type() << " (" << COLOR_YELLOW << task << COLOR_DEFAULT << ")"  << std::endl;
-    (*act_iter)->act();
+    {
+      _console << "[DBG][ACT] "
+               << "TASK (" << COLOR_YELLOW << std::setw (24) << task << COLOR_DEFAULT << ") "
+               << "TYPE (" << COLOR_YELLOW << std::setw (32) << (*act_iter)->type() << COLOR_DEFAULT << ") "
+               << "NAME (" << COLOR_YELLOW << std::setw (16) << (*act_iter)->getShortName() << COLOR_DEFAULT << ") ";
+
+      MemData mcount;
+      mcount.start();
+      (*act_iter)->act();
+      mcount.stop();
+
+      _console << "MEM (" << COLOR_YELLOW << mcount.delta() << "kB" << COLOR_DEFAULT << ")"<< std::endl;
+    }
+    else
+      (*act_iter)->act();
   }
 }
 

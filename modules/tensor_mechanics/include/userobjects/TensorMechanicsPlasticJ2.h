@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #ifndef TENSORMECHANICSPLASTICJ2_H
 #define TENSORMECHANICSPLASTICJ2_H
 
@@ -20,6 +26,8 @@ class TensorMechanicsPlasticJ2 : public TensorMechanicsPlasticModel
  public:
   TensorMechanicsPlasticJ2(const std::string & name, InputParameters parameters);
 
+  /// returns the model name (J2)
+  virtual std::string modelName() const;
 
  protected:
 

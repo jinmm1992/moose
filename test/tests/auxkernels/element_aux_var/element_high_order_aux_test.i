@@ -40,13 +40,13 @@
     value = 2
     operator = +
     coupled = u
-    execute_on = 'initial timestep'
+    execute_on = 'initial timestep_end'
   [../]
   [./constant]
     variable = one
     type = ConstantAux
     value = 1
-    execute_on = 'initial timestep'
+    execute_on = 'initial timestep_end'
   [../]
 []
 
@@ -92,10 +92,7 @@
 []
 
 [Outputs]
-  [./console]
-    type = Console
-    perf_log = true
-  [../]
+  print_perf_log = true
   [./ex_out]
     type = Exodus
     file_base = ho

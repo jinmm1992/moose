@@ -1,7 +1,10 @@
-/*****************************************/
-/* Written by andrew.wilkins@csiro.au    */
-/* Please contact me if you make changes */
-/*****************************************/
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
+
 
 #include "RichardsPiecewiseLinearSink.h"
 
@@ -22,6 +25,7 @@ InputParameters validParams<RichardsPiecewiseLinearSink>()
   params.addParam<FunctionName>("multiplying_fcn", 1.0, "If this function is provided, the flux will be multiplied by this function.  This is useful for spatially or temporally varying sinks");
   params.addRequiredParam<UserObjectName>("richardsVarNames_UO", "The UserObject that holds the list of Richards variable names.");
   params.addParam<bool>("fully_upwind", false, "Use full upwinding");
+  params.addParam<PostprocessorName>("area_pp", 1, "An area postprocessor.  If given, the bare_fluxes will be divided by this quantity.  This means the bare fluxes are measured in kg.s^-1.  This is useful for the case when you wish to provide the *total* flux, and let MOOSE proportion it uniformly across the boundary.  In that case you would have use_mobility=false=use_relperm, and only one bare flux should be specified");
   return params;
 }
 
@@ -43,6 +47,8 @@ RichardsPiecewiseLinearSink::RichardsPiecewiseLinearSink(const std::string & nam
     _density_UO(_fully_upwind ? &getUserObjectByName<RichardsDensity>(getParam<std::vector<UserObjectName> >("density_UO")[_pvar]) : NULL),
     _seff_UO(_fully_upwind ? &getUserObjectByName<RichardsSeff>(getParam<std::vector<UserObjectName> >("seff_UO")[_pvar]) : NULL),
     _relperm_UO(_fully_upwind ? &getUserObjectByName<RichardsRelPerm>(getParam<std::vector<UserObjectName> >("relperm_UO")[_pvar]) : NULL),
+
+    _area_pp(getPostprocessorValue("area_pp")),
 
     _num_nodes(0),
     _nodal_density(0),
@@ -152,6 +158,16 @@ RichardsPiecewiseLinearSink::computeQpResidual()
 
   flux *= _m_func.value(_t, _q_point[_qp]);
 
+  if (_area_pp == 0.0)
+  {
+    if (flux != 0)
+      mooseError("RichardsPiecewiseLinearSink: flux is nonzero, but area is zero!\n");
+    // if flux == 0, then leave it as zero.
+  }
+  else
+    flux /= _area_pp;
+
+
   return flux;
 }
 
@@ -233,6 +249,15 @@ RichardsPiecewiseLinearSink::jac(unsigned int wrt_num)
 
 
   deriv *= _m_func.value(_t, _q_point[_qp]);
+
+  if (_area_pp == 0.0)
+  {
+    if (deriv != 0)
+      mooseError("RichardsPiecewiseLinearSink: deriv is nonzero, but area is zero!\n");
+    // if deriv == 0, then leave it as zero.
+  }
+  else
+    deriv /= _area_pp;
 
   return _test[_i][_qp]*deriv*phi;
 }

@@ -159,8 +159,5 @@
 [Outputs]
   file_base = jn07
   exodus = false
-  [./console]
-    type = Console
-    perf_log = true
-  [../]
+  print_perf_log = true
 []

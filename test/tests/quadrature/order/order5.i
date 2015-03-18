@@ -33,8 +33,5 @@
 [Outputs]
   exodus = false
   csv = true
-  [./console]
-    type = Console
-    perf_log = false
-  [../]
+  print_perf_log = true
 []

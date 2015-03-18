@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #ifndef TENSORMECHANICSPLASTICMOHRCOULOMBMULTI_H
 #define TENSORMECHANICSPLASTICMOHRCOULOMBMULTI_H
 
@@ -76,16 +82,21 @@ class TensorMechanicsPlasticMohrCoulombMulti : public TensorMechanicsPlasticMode
    * The active yield surfaces, given a vector of yield functions.
    * This is used by FiniteStrainMultiPlasticity to determine the initial
    * set of active constraints at the trial (stress, intnl) configuration.
-   * It is not absolutely necessary to get this perfect (indeed, it is impossible
-   * since the elasticity tensor is unknown), but setting reasonable values
-   * will help the return-map process.
+   * It is up to you (the coder) to determine how accurate you want the
+   * returned_stress to be.  Currently it is only used by FiniteStrainMultiPlasticity
+   * to estimate a good starting value for the Newton-Rahson procedure,
+   * so currently it may not need to be super perfect.
    * @param f values of the yield functions
    * @param stress stress tensor
    * @param intnl internal parameter
+   * @param Eijkl elasticity tensor (stress = Eijkl*strain)
    * @param act (output) act[i] = true if the i_th yield function is active
+   * @param returned_stress (output) Approximate value of the returned stress
    */
-  virtual void activeConstraints(const std::vector<Real> & f, const RankTwoTensor & stress, const Real & intnl, std::vector<bool> & act) const;
+  virtual void activeConstraints(const std::vector<Real> & f, const RankTwoTensor & stress, const Real & intnl, const RankFourTensor & Eijkl, std::vector<bool> & act, RankTwoTensor & returned_stress) const;
 
+  /// Returns the model name (MohrCoulombMulti)
+  virtual std::string modelName() const;
 
 
  protected:
@@ -140,6 +151,9 @@ class TensorMechanicsPlasticMohrCoulombMulti : public TensorMechanicsPlasticMode
 
   /// dot product of two 3-dimensional vectors
   Real dot(const std::vector<Real> & a, const std::vector<Real> & b) const;
+
+  /// cross product of two 3-dimensional vectors.  c = axb
+  void cross(const std::vector<Real> & a, const std::vector<Real> & b, std::vector<Real> & c) const;
 
   /// triple product of three 3-dimensional vectors
   Real triple(const std::vector<Real> & a, const std::vector<Real> & b, const std::vector<Real> & c) const;

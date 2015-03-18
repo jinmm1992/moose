@@ -41,7 +41,7 @@
   [./sum]
     type = RunTime
     time_type = 'alive'
-    execute_on = 'initial jacobian timestep'
+    execute_on = 'initial nonlinear timestep_end'
   [../]
 []
 
@@ -58,11 +58,10 @@
 [Outputs]
   output_initial = true
   exodus = false
+  print_linear_residuals = true
+  print_perf_log = true
   [./console]
     type = Console
-    perf_log = true
-    nonlinear_residuals = true
-    linear_residuals = true
     output_postprocessors_on = 'initial nonlinear timestep_end'
   [../]
 []

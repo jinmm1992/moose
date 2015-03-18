@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "MultiPlasticityLinearSystem.h"
 
 // Following is for perturbing distances in eliminating linearly-dependent directions
@@ -161,6 +167,8 @@ MultiPlasticityLinearSystem::eliminateLinearDependence(const RankTwoTensor & str
     {
       r_tmp.push_back(r[current_yf]);
       info = singularValuesOfR(r_tmp, s);
+      if (info != 0)
+        mooseError("In finding the SVD in the return-map algorithm, the PETSC LAPACK gesvd routine returned with error code " << info);
       if (s[s.size() - 1] < _svd_tol*s[0])
       {
         scheduled_for_deactivation[current_yf] = true;

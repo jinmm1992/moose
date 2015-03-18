@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #ifndef RANKTWOTENSOR_H
 #define RANKTWOTENSOR_H
 
@@ -16,6 +22,7 @@
 #include "petscblaslapack.h"
 
 #include <vector>
+#include "MooseRandom.h"
 
 class RankTwoTensor;
 
@@ -286,6 +293,13 @@ public:
   void symmetricEigenvalues(std::vector<Real> & eigvals) const;
 
   /**
+   * computes eigenvalues and eigenvectors, assuming tens is symmetric, and places them
+   * in ascending order in eigvals.  eigvecs is a matrix with the first column
+   * being the first eigenvector, the second column being the second, etc.
+   */
+  void symmetricEigenvaluesEigenvectors(std::vector<Real> & eigvals, RankTwoTensor & eigvecs) const;
+
+  /**
    * computes eigenvalues, and their symmetric derivatives wrt vals,
    * assuming tens is symmetric
    * @param eigvals are the eigenvalues of the matrix, in ascending order
@@ -315,6 +329,25 @@ public:
    * See code in dsymmetricEigenvalues for extracting eigenvectors from the a output.
    */
   void syev(const char * calculation_type, std::vector<PetscScalar> & eigvals, std::vector<PetscScalar> & a) const;
+
+  /**
+   * This function initializes random seed based on a user-defined number.
+   */
+  static void initRandom( unsigned int );
+
+  /**
+   * This function generates a random unsymmetric rank two tensor.
+   * The first real scales the random number.
+   * The second real offsets the uniform random number
+   */
+  static RankTwoTensor genRandomTensor( Real, Real );
+
+  /**
+   * This function generates a random symmetric rank two tensor.
+   * The first real scales the random number.
+   * The second real offsets the uniform random number
+   */
+  static RankTwoTensor genRandomSymmTensor( Real, Real );
 
 protected:
 

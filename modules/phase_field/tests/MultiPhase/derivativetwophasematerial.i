@@ -144,11 +144,11 @@
     eta = eta
     third_derivatives = false
     outputs = exodus
+    output_properties = 'F dF/dc dF/deta d^2F/dc^2 d^2F/dcdeta d^2F/deta^2'
   [../]
 []
 
 [Preconditioning]
-  # active = ' '
   [./SMP]
     type = SMP
     full = true
@@ -158,11 +158,7 @@
 [Executioner]
   type = Transient
   scheme = 'bdf2'
-
-  # Preconditioned JFNK (default)
   solve_type = 'NEWTON'
-  petsc_options_iname = -pc_type
-  petsc_options_value = lu
 
   l_max_its = 15
   l_tol = 1.0e-4
@@ -177,11 +173,6 @@
 
 [Outputs]
   output_initial = true
-  interval = 1
   exodus = true
-
-  [./console]
-    type = Console
-    perf_log = true
-  [../]
+  print_perf_log = true
 []

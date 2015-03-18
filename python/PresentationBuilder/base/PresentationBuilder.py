@@ -3,11 +3,17 @@ import sys, os, inspect, re
 from collections import OrderedDict
 
 from FactorySystem import *
+from utils import colorText
 from ..slidesets import *
 from ..slides import *
 
 ##
 # Class for generating complete slide shows from markdown syntax
+#
+# Available properties in top-level "[presentation]" block
+#   style = 'inl'
+#   code = 'dark' (see https://highlightjs.org/ for available options)
+#
 class PresentationBuilder(object):
 
   ##
@@ -40,14 +46,15 @@ class PresentationBuilder(object):
     self._output_file = f + '.html'
 
     # Register the objects to be created
-    self.factory.loadPlugins('src', 'slidesets', SlideSet)
-    self.factory.loadPlugins('src', 'slides', RemarkSlide)
+    self.factory.loadPlugins('.', 'slidesets', MooseObject)
+    self.factory.loadPlugins('.', 'slides', MooseObject)
+    self.factory.loadPlugins('.', 'images', MooseObject)
 
     # Build the Parser object
     self.parser = Parser(self.factory, self.warehouse)
 
     # Create SlideSet objects via the Parser object by parsing the input file
-    print 'PARSER:'
+    print colorText('Parsing input...', 'CYAN')
     err = self.parser.parse(input_file)
     if err:
       sys.exit()
@@ -61,9 +68,6 @@ class PresentationBuilder(object):
 
     # Build the slides
     self.warehouse.execute()
-
-    # Build the table-of-contents
-    self._contents()
 
 
   ##
@@ -100,6 +104,10 @@ class PresentationBuilder(object):
       if 'title' in self._params:
         data = re.sub(r'\<title\>.*?\</title\>', '<title>' + self._params['title'] + '</title>', data)
 
+    # Insert the code format
+    if name == 'bottom' and self._format == 'remark' and 'code' in self._params:
+      data = re.sub(r"(highlightStyle:.*?\,)", "highlightStyle: '" + self._params['code'] + "',", data)
+
     # Return the html
     return data
 
@@ -118,7 +126,7 @@ class PresentationBuilder(object):
 
       # Display a message if the style file doesn't exists and do nothinbg
       if not os.path.exists(style):
-        print 'ERROR: Style sheet file "' + style + '" does not exists'
+        raise Exception('Style sheet file "' + style + '" does not exists')
 
       # Read the CSS and store the css in a dict() within the warehouse (needed for Reveal format)
       else:
@@ -132,7 +140,6 @@ class PresentationBuilder(object):
           style[m[0].strip()] = m[1].replace('\n', '').strip()
 
         self.warehouse.css = style
-
 
   ##
   # Inserts additional CSS commands into the html output
@@ -165,27 +172,3 @@ class PresentationBuilder(object):
     output += ' '*4
     output += data[idx:]
     return output
-
-
-  ##
-  # Builds the table of contents for each object
-  def _contents(self):
-
-    # Initialize the table-of-contents slides
-    for obj in self.warehouse.objects:
-      obj.initContents()
-
-    # Initial slide index
-    idx = 1
-    title_slides = []
-
-    # Loop through each object and slide and set the slide index
-    for obj in self.warehouse.objects:
-      for name in obj.activeSlides():
-        slide = obj._slides[name]
-        slide.index = idx
-        idx += slide.count()
-
-    # Call the contents object on each slide set
-    for obj in self.warehouse.objects:
-      obj.contents()

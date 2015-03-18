@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #ifndef TENSORMECHANICSPLASTICMOHRCOULOMB_H
 #define TENSORMECHANICSPLASTICMOHRCOULOMB_H
 
@@ -26,6 +32,8 @@ class TensorMechanicsPlasticMohrCoulomb : public TensorMechanicsPlasticModel
  public:
   TensorMechanicsPlasticMohrCoulomb(const std::string & name, InputParameters parameters);
 
+  /// Returns the model name (MohrCoulomb)
+  virtual std::string modelName() const;
 
  protected:
 

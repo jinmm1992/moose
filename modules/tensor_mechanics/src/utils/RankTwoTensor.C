@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "RankTwoTensor.h"
 
 // Any other includes here
@@ -114,7 +120,6 @@ RankTwoTensor::fillFromInputVector(const std::vector<Real> & input)
 {
   if (input.size() == 6)
   {
-    // Moose::out << "Rank 2 tensor input size =" << input.size() << std::endl;
     _vals[0][0] = input[0]; //S11
     _vals[1][1] = input[1]; //S22
     _vals[2][2] = input[2]; //S33
@@ -124,7 +129,6 @@ RankTwoTensor::fillFromInputVector(const std::vector<Real> & input)
   }
   else if (input.size() == 9)
   {
-    // Moose::out << "Rank 2 tensor input size =" << input.size() << std::endl;
     _vals[0][0] = input[0]; //S11
     _vals[1][0] = input[1]; //S21
     _vals[2][0] = input[2]; //S31
@@ -763,6 +767,17 @@ RankTwoTensor::symmetricEigenvalues(std::vector<Real> & eigvals) const
 }
 
 void
+RankTwoTensor::symmetricEigenvaluesEigenvectors(std::vector<Real> & eigvals, RankTwoTensor & eigvecs) const
+{
+  std::vector<PetscScalar> a;
+  syev("V", eigvals, a);
+
+  for (unsigned int i = 0; i < N; ++i)
+    for (unsigned int j = 0; j < N; ++j)
+      eigvecs(j, i) = a[i*N + j];
+}
+
+void
 RankTwoTensor::dsymmetricEigenvalues(std::vector<Real> & eigvals, std::vector<RankTwoTensor> & deigvals) const
 {
   deigvals.resize(N);
@@ -859,4 +874,34 @@ RankTwoTensor::syev(const char * calculation_type, std::vector<PetscScalar> & ei
 
   if (info != 0)
     mooseError("In computing the eigenvalues and eigenvectors of a symmetric rank-2 tensor, the PETSC LAPACK syev routine returned error code " << info);
+}
+
+void
+RankTwoTensor::initRandom( unsigned int rand_seed )
+{
+  MooseRandom::seed( rand_seed );
+}
+
+RankTwoTensor
+RankTwoTensor::genRandomTensor( Real scale, Real offset )
+{
+  RankTwoTensor tensor;
+
+  for ( unsigned int i = 0; i < N; i++ )
+    for ( unsigned int j = 0; j < N; j++ )
+      tensor(i,j) = ( MooseRandom::rand() + offset ) * scale;
+
+  return tensor;
+}
+
+RankTwoTensor
+RankTwoTensor::genRandomSymmTensor( Real scale, Real offset )
+{
+  RankTwoTensor tensor;
+
+  for ( unsigned int i = 0; i < N; i++ )
+    for ( unsigned int j = i; j < N; j++ )
+      tensor(i,j) = tensor(j,i) = ( MooseRandom::rand() + offset ) * scale;
+
+  return tensor;
 }

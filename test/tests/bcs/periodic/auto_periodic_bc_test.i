@@ -72,9 +72,6 @@
 [Outputs]
   file_base = out_auto
   exodus = true
-  [./console]
-    type = Console
-    perf_log = true
-  [../]
+  print_perf_log = true
 []
 

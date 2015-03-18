@@ -66,13 +66,10 @@
 [Outputs]
   file_base = out_wedge
   output_initial = true
+  print_perf_log = true
   [./oversample]
     type = Exodus
     file_base = out_wedge_oversample
-    file = wedge6_mesh.e # Oversample to another mesh file
-  [../]
-  [./console]
-    type = Console
-    perf_log = true
+    file = wedge6_mesh.e
   [../]
 []

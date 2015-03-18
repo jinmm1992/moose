@@ -195,7 +195,7 @@ class TestHarness:
                   else: # This job is skipped - notify the runner
                     if (reason != ''):
                       self.handleTestResult(tester.parameters(), '', reason)
-                      self.runner.jobSkipped(tester.parameters()['test_name'])
+                    self.runner.jobSkipped(tester.parameters()['test_name'])
 
               os.chdir(saved_cwd)
               sys.path.pop()
@@ -546,7 +546,7 @@ class TestHarness:
         color = 'RED'
       else:
         color = 'GREEN'
-      test_name = colorText(specs['test_name']  + ": ", self.options, color)
+      test_name = colorText(specs['test_name']  + ": ", color, colored=self.options.colored, code=self.options.code)
       output = ("\n" + test_name).join(lines)
       print output
 
@@ -615,7 +615,8 @@ class TestHarness:
     if self.error_code & 0x0F:
       summary += ', <r>FATAL PARSER ERROR</r>'
 
-    print colorText( summary % (self.num_passed, self.num_skipped, self.num_pending, self.num_failed), self.options, "", html=True )
+    print colorText( summary % (self.num_passed, self.num_skipped, self.num_pending, self.num_failed),  "", html = True, \
+                     colored=self.options.colored, code=self.options.code )
     if self.options.pbs:
       print '\nYour PBS batch file:', self.options.pbs
     if self.file:
@@ -657,7 +658,7 @@ class TestHarness:
     parser.add_argument('test_name', nargs=argparse.REMAINDER)
     parser.add_argument('--opt', action='store_const', dest='method', const='opt', help='test the app_name-opt binary')
     parser.add_argument('--dbg', action='store_const', dest='method', const='dbg', help='test the app_name-dbg binary')
-    parser.add_argument('--devel', action='store_const', dest='method', const='dev', help='test the app_name-devel binary')
+    parser.add_argument('--devel', action='store_const', dest='method', const='devel', help='test the app_name-devel binary')
     parser.add_argument('--oprof', action='store_const', dest='method', const='oprof', help='test the app_name-oprof binary')
     parser.add_argument('--pro', action='store_const', dest='method', const='pro', help='test the app_name-pro binary')
     parser.add_argument('-j', '--jobs', nargs=1, metavar='int', action='store', type=int, dest='jobs', default=1, help='run test binaries in parallel')

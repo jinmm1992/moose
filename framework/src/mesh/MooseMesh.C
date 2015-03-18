@@ -92,7 +92,7 @@ InputParameters validParams<MooseMesh>()
 
 MooseMesh::MooseMesh(const std::string & name, InputParameters parameters) :
     MooseObject(name, parameters),
-    Restartable(name, parameters, "Mesh"),
+    Restartable(parameters, "Mesh"),
     _mesh_distribution_type(getParam<MooseEnum>("distribution")),
     _use_parallel_mesh(false),
     _distribution_overridden(false),
@@ -204,7 +204,7 @@ MooseMesh::MooseMesh(const std::string & name, InputParameters parameters) :
 
 MooseMesh::MooseMesh(const MooseMesh & other_mesh) :
     MooseObject(other_mesh._name, other_mesh._pars),
-    Restartable(_name, _pars, "Mesh"),
+    Restartable(_pars, "Mesh"),
     _mesh_distribution_type(other_mesh._mesh_distribution_type),
     _use_parallel_mesh(other_mesh._use_parallel_mesh),
     _distribution_overridden(other_mesh._distribution_overridden),
@@ -919,7 +919,7 @@ MooseMesh::getBoundaryID(const BoundaryName & boundary_name) const
   if (boundary_name == "ANY_BOUNDARY_ID")
     mooseError("Please use getBoundaryIDs() when passing \"ANY_BOUNDARY_ID\"");
 
-  BoundaryID id;
+  BoundaryID id = Moose::INVALID_BOUNDARY_ID;
   std::istringstream ss(boundary_name);
 
   if (!(ss >> id))
@@ -979,7 +979,7 @@ MooseMesh::getSubdomainID(const SubdomainName & subdomain_name) const
   if (subdomain_name == "ANY_BLOCK_ID")
     mooseError("Please use getSubdomainIDs() when passing \"ANY_BLOCK_ID\"");
 
-  SubdomainID id;
+  SubdomainID id = Moose::INVALID_BLOCK_ID;
   std::istringstream ss(subdomain_name);
 
   if (!(ss >> id))
@@ -999,11 +999,11 @@ MooseMesh::getSubdomainIDs(const std::vector<SubdomainName> & subdomain_name) co
     {
       ids.assign(_mesh_subdomains.begin(), _mesh_subdomains.end());
       if (i)
-        mooseWarning("You passed \"ANY_BLOCK_ID\" in addition to other sudomain_names.  This may be a logic error.");
+        mooseWarning("You passed \"ANY_BLOCK_ID\" in addition to other block names.  This may be a logic error.");
       break;
     }
 
-    SubdomainID id;
+    SubdomainID id = Moose::INVALID_BLOCK_ID;
     std::istringstream ss(subdomain_name[i]);
 
     if (!(ss >> id))
@@ -1878,17 +1878,17 @@ MooseMesh::setBoundaryToNormalMap(std::map<BoundaryID, RealVectorValue> * bounda
   _boundary_to_normal_map.reset(boundary_map);
 }
 
-#ifdef LIBMESH_ENABLE_AMR
-unsigned int & MooseMesh::uniformRefineLevel()
+unsigned int
+MooseMesh::uniformRefineLevel() const
 {
   return _uniform_refine_level;
 }
 
-const unsigned int & MooseMesh::uniformRefineLevel() const
+void
+MooseMesh::setUniformRefineLevel(unsigned int level)
 {
-  return _uniform_refine_level;
+  _uniform_refine_level = level;
 }
-#endif // LIBMESH_ENABLE_AMR
 
 void
 MooseMesh::addGhostedBoundary(BoundaryID boundary_id)

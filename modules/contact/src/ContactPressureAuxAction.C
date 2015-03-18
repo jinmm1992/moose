@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "ContactPressureAuxAction.h"
 
 #include "Factory.h"
@@ -61,7 +67,7 @@ ContactPressureAuxAction::act()
     name << counter++;
 
     MultiMooseEnum execute_options(SetupInterface::getExecuteOptions());
-    execute_options = "jacobian timestep timestep_begin";
+    execute_options = "nonlinear timestep_end timestep_begin";
     params.set<MultiMooseEnum>("execute_on") = execute_options;
     _problem->addAuxKernel("ContactPressureAux", name.str(), params);
   }

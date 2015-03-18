@@ -12,19 +12,23 @@ class DjangoWikiSlide(RemarkSlide):
     return params
 
   # When reading the markdown these replacements are made
-  replace = [('&amp;', '&'), ('&lt;', '<'), ('&gt;', '>'), ('\r\n', '\n'), ('&quot;', '"')]
+  replace = [('&amp;', '&'), ('&lt;', '<'), ('&gt;', '>'), ('\r\n', '\n'), ('&quot;', '"'), ('\r', '')]
 
   ##
   # Constructor
   # @param id The numeric slide id
   # @param markdown The raw markdown for this slide
   # @param kwargs Optional key, value pairs
-  def __init__(self, name, params):
-    RemarkSlide.__init__(self, name, params, image_type='DjangoWikiImage')
+  def __init__(self, params):
+    RemarkSlide.__init__(self, params, image_type = 'DjangoWikiImage')
 
     # Storage for comments
-    self._comments = []
+    self.__comments = []
 
+
+  ##
+  # Parse the markdown retrieved from a Django wiki
+  # @param markdown The raw markdown for the current slide
   def parse(self, markdown):
     markdown = RemarkSlide.parse(self, markdown)
 
@@ -33,7 +37,7 @@ class DjangoWikiSlide(RemarkSlide):
       markdown = markdown.replace(item[0], item[1])
 
     # Equations
-    pattern = re.compile('(\${1,})(.*?)\${1,}', re.S)
+    pattern = re.compile('(\${2,})(.*?)\${2,}', re.S)
     for m in pattern.finditer(markdown):
 
       # Inline
@@ -58,41 +62,45 @@ class DjangoWikiSlide(RemarkSlide):
     #
     # However, RemarkJS does support indented code blocks, but these blocks need to be indented by
     # four spaces. The following preforms this indenting.
-    regex = re.compile(r'([\*-].*?\n)(```.*?```\s*\n)', re.MULTILINE|re.DOTALL)
-    markdown = regex.sub(self._indentListNestedCode, markdown)
+    regex = re.compile(r'(^\s*[\*-].*?\n)(```.*?```\s*\n)', re.MULTILINE|re.DOTALL)
+    markdown = regex.sub(self.__subIndentListNestedCode, markdown)
 
     # Extract comments
-    markdown = re.sub(r'(?<![^\s.])(\s*\[\]\(\?\?\?\s*(.*?)\))', self._storeComment, markdown, re.S)
+    markdown = re.sub(r'(?<![^\s.])(\s*\[\]\(\?\?\?\s*(.*?)\))', self.__subStoreComment, markdown, re.DOTALL)
 
     # Add the comments at the end
-    if self._comments:
+    if self.__comments:
       prefix = '\n'
-      if len(self._comments) > 1:
+      if len(self.__comments) > 1:
         prefix = '\n- '
 
       markdown += '\n???\n'
-      for c in self._comments:
+      for c in self.__comments:
         markdown += prefix + c
 
     # Return the markdown
     return markdown
 
+
   ##
   # Substitution function for extracting Remark comments (private)
-  def _storeComment(self, match):
-    self._comments.append(match.group(2).strip())
+  # @param The re Match object, see re.sub
+  def __subStoreComment(self, match):
+    self.__comments.append(match.group(2).strip())
     return ''
 
+
   ##
-  # Subsitution function for nesting code in lists (private)
-  def _indentListNestedCode(self, match):
+  # Substitution function for nesting code in lists (private)
+  # @param The re Match object, see re.sub
+  def __subIndentListNestedCode(self, match):
 
     # Perform an additional match to check if the ``` directly below the list item
-    sub_match = re.search(r'([\*-].*?\n)(```)', match.group(0), re.MULTILINE)
+    sub_match = re.search(r'(^\s*[\*-].*?\n)(```)', match.group(0), re.MULTILINE)
 
     # If so, then build the indented output
     if sub_match:
-      output = match.group(1)
+      output = '\n' + match.group(1)
       for line in match.group(2).split('\n')[0:-1]: #[0:-1] removes the empty string at the end of the list
         output += ' '*4 + line + '\n'
       return output

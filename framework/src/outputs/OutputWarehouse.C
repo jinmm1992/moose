@@ -28,8 +28,7 @@
 OutputWarehouse::OutputWarehouse() :
     Warehouse<Output>(),
     _multiapp_level(0),
-    _output_exec_flag(OUTPUT_CUSTOM),
-    _allow_output(true),
+    _output_exec_flag(EXEC_CUSTOM),
     _force_output(false)
 {
   // Set the reserved names
@@ -147,14 +146,13 @@ OutputWarehouse::addOutputFilename(const OutFileBase & filename)
 }
 
 void
-OutputWarehouse::outputStep(OutputExecFlagType type)
+OutputWarehouse::outputStep(ExecFlagType type)
 {
   if (_force_output)
-    type = OUTPUT_FORCED;
+    type = EXEC_FORCED;
 
-  if (type == OUTPUT_FORCED || _allow_output)
-    for (std::vector<Output *>::const_iterator it = _all_objects.begin(); it != _all_objects.end(); ++it)
-      (*it)->outputStep(type);
+  for (std::vector<Output *>::const_iterator it = _all_objects.begin(); it != _all_objects.end(); ++it)
+    (*it)->outputStep(type);
 
   // Reset force output flag
   _force_output = false;
@@ -181,6 +179,13 @@ OutputWarehouse::mooseConsole()
     _console_buffer.clear();
     _console_buffer.str("");
   }
+}
+
+void
+OutputWarehouse::flushConsoleBuffer()
+{
+  if (!_console_buffer.str().empty())
+    mooseConsole();
 }
 
 void
@@ -271,7 +276,7 @@ OutputWarehouse::isReservedName(const std::string & name)
 }
 
 void
-OutputWarehouse::setOutputExecutionType(OutputExecFlagType type)
+OutputWarehouse::setOutputExecutionType(ExecFlagType type)
 {
   _output_exec_flag = type;
 }
@@ -279,7 +284,8 @@ OutputWarehouse::setOutputExecutionType(OutputExecFlagType type)
 void
 OutputWarehouse::allowOutput(bool state)
 {
-  _allow_output = state;
+  for (std::vector<Output *>::iterator it = _all_objects.begin(); it != _all_objects.end(); ++it)
+    (*it)->allowOutput(state);
 }
 
 void

@@ -48,7 +48,7 @@
   [./BndsCalc]
     type = BndsCalcAux
     variable = bnds
-    execute_on = timestep
+    execute_on = timestep_end
   [../]
 []
 
@@ -114,9 +114,6 @@
   file_base = hex
   exodus = true
   output_initial = true
-  [./console]
-    type = Console
-    perf_log = true
-    linear_residuals = true
-  [../]
+  print_linear_residuals = true
+  print_perf_log = true
 []

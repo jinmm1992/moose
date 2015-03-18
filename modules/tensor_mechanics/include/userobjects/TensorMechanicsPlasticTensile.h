@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #ifndef TENSORMECHANICSPLASTICTENSILE_H
 #define TENSORMECHANICSPLASTICTENSILE_H
 
@@ -25,6 +31,8 @@ class TensorMechanicsPlasticTensile : public TensorMechanicsPlasticModel
  public:
   TensorMechanicsPlasticTensile(const std::string & name, InputParameters parameters);
 
+  /// Returns the model name (Tensile)
+  virtual std::string modelName() const;
 
  protected:
 

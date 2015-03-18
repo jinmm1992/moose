@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "StressDivergenceTensors.h"
 
 #include "Material.h"
@@ -12,6 +18,8 @@ InputParameters validParams<StressDivergenceTensors>()
   params.addCoupledVar("disp_z", "The z displacement");
   params.addCoupledVar("temp", "The temperature");
   params.addParam<std::string>("base_name", "Material property base name");
+  params.set<bool>("use_displaced_mesh") = false;
+
   return params;
 }
 

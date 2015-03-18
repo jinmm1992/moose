@@ -108,7 +108,7 @@ InputParameters & injectFEProblem(FEProblem * fe_problem, InputParameters & para
 
 FEProblem::FEProblem(const std::string & name, InputParameters parameters) :
     SubProblem(name, parameters),
-    Restartable(name, injectFEProblem(this, parameters), "FEProblem"),
+    Restartable(injectFEProblem(this, parameters), "FEProblem"),
     _mesh(*parameters.get<MooseMesh *>("mesh")),
     _eq(_mesh),
     _initialized(false),
@@ -321,6 +321,11 @@ FEProblem::setCoordSystem(const std::vector<SubdomainName> & blocks, const Multi
   }
 }
 
+void FEProblem::setAxisymmetricCoordAxis(const MooseEnum & rz_coord_axis)
+{
+  _rz_coord_axis = rz_coord_axis;
+}
+
 void FEProblem::initialSetup()
 {
   // Write all cached calls to _console, this will output calls to _console from the object constructors
@@ -352,11 +357,15 @@ void FEProblem::initialSetup()
 
   if (!_app.isRecovering())
   {
-    // uniform refine
-    if (_mesh.uniformRefineLevel() > 0)
+    /**
+     * If we are not recovering but we are doing restart (_app_setFileRestart() == true) with
+     * additional uniform refinements. We have to delay the refinement until this point
+     * in time so that the equation systems are initialized and projections can be performed.
+     */
+    if (_mesh.uniformRefineLevel() > 0 && _app.setFileRestart())
     {
       Moose::setup_perf_log.push("Uniformly Refine Mesh","Setup");
-      adaptivity().uniformRefine(_mesh.uniformRefineLevel());
+      adaptivity().uniformRefineWithProjection();
       Moose::setup_perf_log.pop("Uniformly Refine Mesh","Setup");
     }
   }
@@ -372,16 +381,16 @@ void FEProblem::initialSetup()
   // UserObject initialSetup
   for (unsigned int i=0; i<n_threads; i++)
   {
-    _user_objects(EXEC_RESIDUAL)[i].updateDependObjects(_aux.getDependObjects(EXEC_RESIDUAL));
-    _user_objects(EXEC_JACOBIAN)[i].updateDependObjects(_aux.getDependObjects(EXEC_JACOBIAN));
-    _user_objects(EXEC_TIMESTEP)[i].updateDependObjects(_aux.getDependObjects(EXEC_TIMESTEP));
+    _user_objects(EXEC_LINEAR)[i].updateDependObjects(_aux.getDependObjects(EXEC_RESIDUAL));
+    _user_objects(EXEC_NONLINEAR)[i].updateDependObjects(_aux.getDependObjects(EXEC_JACOBIAN));
+    _user_objects(EXEC_TIMESTEP_END)[i].updateDependObjects(_aux.getDependObjects(EXEC_TIMESTEP_END));
     _user_objects(EXEC_TIMESTEP_BEGIN)[i].updateDependObjects(_aux.getDependObjects(EXEC_TIMESTEP_BEGIN));
     _user_objects(EXEC_INITIAL)[i].updateDependObjects(_aux.getDependObjects(EXEC_INITIAL));
     _user_objects(EXEC_CUSTOM)[i].updateDependObjects(_aux.getDependObjects(EXEC_CUSTOM));
 
-    _user_objects(EXEC_RESIDUAL)[i].initialSetup();
-    _user_objects(EXEC_JACOBIAN)[i].initialSetup();
-    _user_objects(EXEC_TIMESTEP)[i].initialSetup();
+    _user_objects(EXEC_LINEAR)[i].initialSetup();
+    _user_objects(EXEC_NONLINEAR)[i].initialSetup();
+    _user_objects(EXEC_TIMESTEP_END)[i].initialSetup();
     _user_objects(EXEC_TIMESTEP_BEGIN)[i].initialSetup();
     _user_objects(EXEC_INITIAL)[i].initialSetup();
     _user_objects(EXEC_CUSTOM)[i].initialSetup();
@@ -509,12 +518,26 @@ void FEProblem::initialSetup()
     it->second->updateSeeds(EXEC_INITIAL);
 
   // Call initial setup on the transfers
-  _transfers(EXEC_RESIDUAL)[0].initialSetup();
-  _transfers(EXEC_JACOBIAN)[0].initialSetup();
-  _transfers(EXEC_TIMESTEP)[0].initialSetup();
+  _transfers(EXEC_LINEAR)[0].initialSetup();
+  _transfers(EXEC_NONLINEAR)[0].initialSetup();
+  _transfers(EXEC_TIMESTEP_END)[0].initialSetup();
   _transfers(EXEC_TIMESTEP_BEGIN)[0].initialSetup();
   _transfers(EXEC_INITIAL)[0].initialSetup();
   _transfers(EXEC_CUSTOM)[0].initialSetup();
+
+  _to_multi_app_transfers(EXEC_LINEAR)[0].initialSetup();
+  _to_multi_app_transfers(EXEC_NONLINEAR)[0].initialSetup();
+  _to_multi_app_transfers(EXEC_TIMESTEP_END)[0].initialSetup();
+  _to_multi_app_transfers(EXEC_TIMESTEP_BEGIN)[0].initialSetup();
+  _to_multi_app_transfers(EXEC_INITIAL)[0].initialSetup();
+  _to_multi_app_transfers(EXEC_CUSTOM)[0].initialSetup();
+
+  _from_multi_app_transfers(EXEC_LINEAR)[0].initialSetup();
+  _from_multi_app_transfers(EXEC_NONLINEAR)[0].initialSetup();
+  _from_multi_app_transfers(EXEC_TIMESTEP_END)[0].initialSetup();
+  _from_multi_app_transfers(EXEC_TIMESTEP_BEGIN)[0].initialSetup();
+  _from_multi_app_transfers(EXEC_INITIAL)[0].initialSetup();
+  _from_multi_app_transfers(EXEC_CUSTOM)[0].initialSetup();
 
   if (!_app.isRecovering())
   {
@@ -538,7 +561,7 @@ void FEProblem::initialSetup()
     if (_use_legacy_uo_initialization)
     {
       computeUserObjects(EXEC_TIMESTEP_BEGIN);
-      computeUserObjects(EXEC_RESIDUAL);
+      computeUserObjects(EXEC_LINEAR);
     }
     Moose::setup_perf_log.pop("Initial computeUserObjects()","Setup");
   }
@@ -611,8 +634,6 @@ void FEProblem::timestepSetup()
 
    // Timestep setup of output objects
   _app.getOutputWarehouse().timestepSetup();
-
-
 }
 
 unsigned int
@@ -1563,26 +1584,15 @@ FEProblem::addMaterial(const std::string & mat_name, const std::string & name, I
     _reinit_displaced_elem = true;
   }
   else
-  {
     parameters.set<SubProblem *>("_subproblem") = this;
-  }
-
-//  parameters.set<SubProblem *>("_subproblem") = this;
-//  parameters.set<SubProblem *>("_subproblem_displaced") = _displaced_problem;
 
   // Get user-defined list of block names
   std::vector<SubdomainName> blocks = parameters.get<std::vector<SubdomainName> >("block");
-  std::vector<SubdomainID> block_ids(blocks.size());
+  std::vector<SubdomainID> block_ids = _mesh.getSubdomainIDs(blocks);
 
   // Get user-defined list of boundary names
   std::vector<BoundaryName> boundaries = parameters.get<std::vector<BoundaryName> >("boundary");
-  std::vector<BoundaryID> boundary_ids(boundaries.size());
-
-  // Convert the ids to names
-  for (unsigned int i=0; i<blocks.size(); ++i)
-    block_ids[i] = _mesh.getSubdomainID(blocks[i]);
-  for (unsigned int i=0; i < boundaries.size(); ++i)
-    boundary_ids[i] = _mesh.getBoundaryID(boundaries[i]);
+  std::vector<BoundaryID> boundary_ids = _mesh.getBoundaryIDs(boundaries);
 
   for (THREAD_ID tid = 0; tid < libMesh::n_threads(); tid++)
   {
@@ -1915,11 +1925,16 @@ FEProblem::initPostprocessorData(const std::string & name)
 
 }
 
-
 ExecStore<PostprocessorWarehouse> &
 FEProblem::getPostprocessorWarehouse()
 {
   return _pps;
+}
+
+ExecStore<UserObjectWarehouse> &
+FEProblem::getUserObjectWarehouse()
+{
+  return _user_objects;
 }
 
 /**
@@ -2205,7 +2220,7 @@ FEProblem::computeUserObjectsInternal(ExecFlagType type, UserObjectWarehouse::GR
        * we compute user objects.
        */
       if (_use_legacy_uo_aux_computation)
-        _aux.compute(EXEC_RESIDUAL);
+        _aux.compute(EXEC_LINEAR);
     }
 
     // init
@@ -2534,18 +2549,18 @@ FEProblem::computeUserObjectsInternal(ExecFlagType type, UserObjectWarehouse::GR
 }
 
 void
-FEProblem::computeUserObjects(ExecFlagType type/* = EXEC_TIMESTEP*/, UserObjectWarehouse::GROUP group)
+FEProblem::computeUserObjects(ExecFlagType type/* = EXEC_TIMESTEP_END*/, UserObjectWarehouse::GROUP group)
 {
   Moose::perf_log.push("compute_user_objects()","Solve");
 
   switch (type)
   {
-  case EXEC_RESIDUAL:
+  case EXEC_LINEAR:
     for (THREAD_ID tid = 0; tid < libMesh::n_threads(); tid++)
       _user_objects(type)[tid].residualSetup();
     break;
 
-  case EXEC_JACOBIAN:
+  case EXEC_NONLINEAR:
     for (THREAD_ID tid = 0; tid < libMesh::n_threads(); tid++)
       _user_objects(type)[tid].jacobianSetup();
     break;
@@ -3111,7 +3126,7 @@ FEProblem::advanceState()
     _pps_data[tid]->copyValuesBack();
 
   for (THREAD_ID tid = 0; tid < libMesh::n_threads(); ++tid)
-    _materials[tid].updateMaterialDataState();
+    _materials[tid].timestepSetup();
 
   if (_material_props.hasStatefulProperties())
     _material_props.shift();
@@ -3120,7 +3135,8 @@ FEProblem::advanceState()
     _bnd_material_props.shift();
 }
 
-void FEProblem::restoreSolutions()
+void
+FEProblem::restoreSolutions()
 {
   _nl.restoreSolutions();
   _aux.restoreSolutions();
@@ -3128,6 +3144,36 @@ void FEProblem::restoreSolutions()
   if (_displaced_problem != NULL)
     _displaced_problem->updateMesh(*_nl.currentSolution(), *_aux.currentSolution());
 }
+
+void
+FEProblem::outputStep(ExecFlagType type)
+{
+  _nl.update();
+  _aux.update();
+  _app.getOutputWarehouse().outputStep(type);
+}
+
+void
+FEProblem::allowOutput(bool state)
+{
+  _app.getOutputWarehouse().allowOutput(state);
+}
+
+void
+FEProblem::forceOutput()
+{
+  _app.getOutputWarehouse().forceOutput();
+}
+
+void
+FEProblem::initPetscOutput()
+{
+  std::vector<PetscOutput*> outputs = _app.getOutputWarehouse().getOutputs<PetscOutput>();
+  for (std::vector<PetscOutput*>::const_iterator it = outputs.begin(); it != outputs.end(); ++it)
+    (*it)->timestepSetupInternal();
+  Moose::PetscSupport::petscSetDefaults(*this);
+}
+
 
 Real
 FEProblem::solutionChangeNorm()
@@ -3224,13 +3270,13 @@ FEProblem::computeResidualType(const NumericVector<Number>& soln, NumericVector<
   for (std::map<std::string, RandomData *>::iterator it = _random_data_objects.begin();
        it != _random_data_objects.end();
        ++it)
-    it->second->updateSeeds(EXEC_RESIDUAL);
+    it->second->updateSeeds(EXEC_LINEAR);
 
-  execTransfers(EXEC_RESIDUAL);
+  execTransfers(EXEC_LINEAR);
 
-  execMultiApps(EXEC_RESIDUAL);
+  execMultiApps(EXEC_LINEAR);
 
-  computeUserObjects(EXEC_RESIDUAL, UserObjectWarehouse::PRE_AUX);
+  computeUserObjects(EXEC_LINEAR, UserObjectWarehouse::PRE_AUX);
 
   if (_displaced_problem != NULL)
     _displaced_problem->updateMesh(soln, *_aux.currentSolution());
@@ -3248,9 +3294,9 @@ FEProblem::computeResidualType(const NumericVector<Number>& soln, NumericVector<
   }
   _aux.residualSetup();
 
-  _aux.compute(EXEC_RESIDUAL);
+  _aux.compute(EXEC_LINEAR);
 
-  computeUserObjects(EXEC_RESIDUAL, UserObjectWarehouse::POST_AUX);
+  computeUserObjects(EXEC_LINEAR, UserObjectWarehouse::POST_AUX);
 
   _app.getOutputWarehouse().residualSetup();
 
@@ -3277,12 +3323,12 @@ FEProblem::computeJacobian(NonlinearImplicitSystem & sys, const NumericVector<Nu
     for (std::map<std::string, RandomData *>::iterator it = _random_data_objects.begin();
          it != _random_data_objects.end();
          ++it)
-      it->second->updateSeeds(EXEC_JACOBIAN);
+      it->second->updateSeeds(EXEC_NONLINEAR);
 
-    execTransfers(EXEC_JACOBIAN);
-    execMultiApps(EXEC_JACOBIAN);
+    execTransfers(EXEC_NONLINEAR);
+    execMultiApps(EXEC_NONLINEAR);
 
-    computeUserObjects(EXEC_JACOBIAN, UserObjectWarehouse::PRE_AUX);
+    computeUserObjects(EXEC_NONLINEAR, UserObjectWarehouse::PRE_AUX);
 
     if (_displaced_problem != NULL)
       _displaced_problem->updateMesh(soln, *_aux.currentSolution());
@@ -3299,9 +3345,9 @@ FEProblem::computeJacobian(NonlinearImplicitSystem & sys, const NumericVector<Nu
 
     _aux.jacobianSetup();
 
-    _aux.compute(EXEC_JACOBIAN);
+    _aux.compute(EXEC_NONLINEAR);
 
-    computeUserObjects(EXEC_JACOBIAN, UserObjectWarehouse::POST_AUX);
+    computeUserObjects(EXEC_NONLINEAR, UserObjectWarehouse::POST_AUX);
 
     _app.getOutputWarehouse().jacobianSetup();
 
@@ -3339,7 +3385,7 @@ FEProblem::computeJacobianBlocks(std::vector<JacobianBlock *> & blocks)
   if (_displaced_problem != NULL)
     _displaced_problem->updateMesh(*_nl.currentSolution(), *_aux.currentSolution());
 
-  _aux.compute(EXEC_JACOBIAN);
+  _aux.compute(EXEC_NONLINEAR);
 
   _nl.computeJacobianBlocks(blocks);
 }
@@ -3370,7 +3416,7 @@ FEProblem::computeBounds(NonlinearImplicitSystem & /*sys*/, NumericVector<Number
       _materials[i].residualSetup();
     }
     _aux.residualSetup();
-    _aux.compute(EXEC_RESIDUAL);
+    _aux.compute(EXEC_LINEAR);
     _lower.swap(lower);
     _upper.swap(upper);
   }
@@ -3501,7 +3547,8 @@ FEProblem::possiblyRebuildGeomSearchPatches()
       // Let this fall through if things do need to be updated...
 
       case 1: // Always
-        _console << "\n\nUpdating geometric search patches\n\n";
+        // Flush output here to see the message before the reinitialization, which could take a while
+        _console << "\n\nUpdating geometric search patches\n"<<std::endl;
 
         _geometric_search_data.clearNearestNodeLocators();
         _mesh.updateActiveSemiLocalNodeRange(_ghosted_elems);
@@ -3510,6 +3557,9 @@ FEProblem::possiblyRebuildGeomSearchPatches()
         _displaced_mesh->updateActiveSemiLocalNodeRange(_ghosted_elems);
 
         reinitBecauseOfGhosting();
+
+        // This is needed to reinitialize PETSc output
+        initPetscOutput();
     }
   }
 }
@@ -3613,6 +3663,10 @@ FEProblem::checkProblemIntegrity()
 
       if (n_processors() > 1)
       {
+        if (_mesh.uniformRefineLevel() > 0 && _mesh.getMesh().skip_partitioning() == false)
+          mooseError("This simulation is using uniform refinement on the mesh, with stateful properties and adaptivity. "
+                     "You must skip partitioning to run this case:\nMesh/skip_partitioning=true");
+
         _console << "\nWarning! Mesh re-partitioning is disabled while using stateful material properties!  This can lead to large load imbalances and degraded performance!!\n\n";
         _mesh.getMesh().skip_partitioning(true);
         if (_displaced_problem)

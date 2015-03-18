@@ -69,7 +69,7 @@
   radius_inner = '12.5 25.0 37.5'
   radius_outer = '25.0 37.5 50.0'
   intersecting_boundary = '1 2'
-  symmetry_plane = true
+  symmetry_plane = 2
 []
 
 [SolidMechanics]
@@ -91,27 +91,27 @@
     tensor = stress
     variable = stress_yy
     index = 1
-    execute_on = timestep
+    execute_on = timestep_end
   [../]
   [./stress_zz]
     type = MaterialTensorAux
     tensor = stress
     variable = stress_zz
     index = 2
-    execute_on = timestep
+    execute_on = timestep_end
   [../]
   [./vonmises]
     type = MaterialTensorAux
     tensor = stress
     variable = vonmises
     quantity = vonmises
-    execute_on = timestep
+    execute_on = timestep_end
   [../]
   [./SED]
     type = MaterialRealAux
     variable = SED
     property = strain_energy_density
-    execute_on = timestep
+    execute_on = timestep_end
   [../]
 []
 
@@ -221,9 +221,6 @@
   output_initial = false
   exodus = true
   csv = true
-  [./console]
-    type = Console
-    perf_log = true
-    linear_residuals = true
-  [../]
+  print_linear_residuals = true
+  print_perf_log = true
 []

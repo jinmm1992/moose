@@ -1,40 +1,49 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "ElasticEnergyMaterial.h"
 #include "RankTwoTensor.h"
+#include "ElasticityTensorR4.h"
 
 template<>
 InputParameters validParams<ElasticEnergyMaterial>()
 {
-  InputParameters params = validParams<DerivativeBaseMaterial>();
+  InputParameters params = validParams<DerivativeFunctionMaterialBase>();
   params.addClassDescription("Free energy material for the elastic energy contributions.");
   params.addParam<std::string>("base_name", "Material property base name");
+  params.addRequiredCoupledVar("args", "Arguments of F() - use vector coupling");
   return params;
 }
 
 ElasticEnergyMaterial::ElasticEnergyMaterial(const std::string & name,
                                              InputParameters parameters) :
-    DerivativeBaseMaterial(name, parameters),
+    DerivativeFunctionMaterialBase(name, parameters),
     _base_name(isParamValid("base_name") ? getParam<std::string>("base_name") + "_" : "" ),
     _stress(getMaterialProperty<RankTwoTensor>(_base_name + "stress")),
+    _elasticity_tensor(getMaterialProperty<ElasticityTensorR4>(_base_name + "elasticity_tensor")),
     _strain(getMaterialProperty<RankTwoTensor>(_base_name + "elastic_strain"))
 {
-  _dstress.resize(_nargs);
-  _d2stress.resize(_nargs);
   _dstrain.resize(_nargs);
   _d2strain.resize(_nargs);
+  _delasticity_tensor.resize(_nargs);
+  _d2elasticity_tensor.resize(_nargs);
 
-  // fetch stress and strain derivatives (in simple eigenstrain models this is is only w.r.t. 'c')
+  // fetch stress and elasticity tensor derivatives (in simple eigenstrain models this is is only w.r.t. 'c')
   for (unsigned int i = 0; i < _nargs; ++i)
   {
-    _dstress[i] = &getMaterialPropertyDerivative<RankTwoTensor>(_base_name + "stress", _arg_names[i]);
-    _dstrain[i] = &getMaterialPropertyDerivative<RankTwoTensor>(_base_name + "elastic_strain", _arg_names[i]);
+    _dstrain[i]            = &getMaterialPropertyDerivative<RankTwoTensor>(_base_name + "elastic_strain", _arg_names[i]);
+    _delasticity_tensor[i] = &getMaterialPropertyDerivative<ElasticityTensorR4>(_base_name + "elasticity_tensor", _arg_names[i]);
 
-    _d2stress[i].resize(_nargs);
     _d2strain[i].resize(_nargs);
+    _d2elasticity_tensor[i].resize(_nargs);
 
     for (unsigned int j = 0; j < _nargs; ++j)
     {
-      _d2stress[i][j] = &getMaterialPropertyDerivative<RankTwoTensor>(_base_name + "stress", _arg_names[i], _arg_names[j]);
-      _d2strain[i][j] = &getMaterialPropertyDerivative<RankTwoTensor>(_base_name + "elastic_strain", _arg_names[i], _arg_names[j]);
+      _d2strain[i][j]            = &getMaterialPropertyDerivative<RankTwoTensor>(_base_name + "elastic_strain", _arg_names[i], _arg_names[j]);
+      _d2elasticity_tensor[i][j] = &getMaterialPropertyDerivative<ElasticityTensorR4>(_base_name + "elasticity_tensor", _arg_names[i], _arg_names[j]);
     }
   }
 }
@@ -46,17 +55,44 @@ ElasticEnergyMaterial::computeF()
 }
 
 Real
-ElasticEnergyMaterial::computeDF(unsigned int i)
+ElasticEnergyMaterial::computeDF(unsigned int i_var)
 {
-  return 0.5 * ((*_dstress[i])[_qp].doubleContraction(_strain[_qp])
-                + _stress[_qp].doubleContraction((*_dstrain[i])[_qp]));
+  unsigned int i = argIndex(i_var);
+
+  // product rule d/di computeF
+  return 0.5 * (
+    ( // dstress/di
+        (*_delasticity_tensor[i])[_qp] * _strain[_qp]
+      + _elasticity_tensor[_qp] * (*_dstrain[i])[_qp]
+    ).doubleContraction(_strain[_qp])
+
+    + _stress[_qp].doubleContraction((*_dstrain[i])[_qp])
+  );
 }
 
 Real
-ElasticEnergyMaterial::computeD2F(unsigned int i, unsigned int j)
+ElasticEnergyMaterial::computeD2F(unsigned int i_var, unsigned int j_var)
 {
-  return 0.5 * ((*_d2stress[i][j])[_qp].doubleContraction(_strain[_qp])
-                + (*_dstress[i])[_qp].doubleContraction((*_dstrain[j])[_qp])
-                + (*_dstress[j])[_qp].doubleContraction((*_dstrain[i])[_qp])
-                + _stress[_qp].doubleContraction((*_d2strain[i][j])[_qp]));
+  unsigned int i = argIndex(i_var);
+  unsigned int j = argIndex(j_var);
+
+  // product rule d/dj computeDF
+  return 0.5 * (
+    (
+        (*_d2elasticity_tensor[i][j])[_qp] * _strain[_qp]
+      + (*_delasticity_tensor[i])[_qp] * (*_dstrain[j])[_qp]
+      + (*_delasticity_tensor[j])[_qp] * (*_dstrain[i])[_qp]
+      + _elasticity_tensor[_qp] * (*_d2strain[i][j])[_qp]
+    ).doubleContraction(_strain[_qp])
+    + (
+        (*_delasticity_tensor[i])[_qp] * _strain[_qp]
+      + _elasticity_tensor[_qp] * (*_dstrain[i])[_qp]
+    ).doubleContraction((*_dstrain[j])[_qp])
+
+    + ( // dstress/dj
+          (*_delasticity_tensor[j])[_qp] * _strain[_qp]
+        + _elasticity_tensor[_qp] * (*_dstrain[j])[_qp]
+      ).doubleContraction((*_dstrain[i])[_qp])
+    + _stress[_qp].doubleContraction((*_d2strain[i][j])[_qp])
+  );
 }

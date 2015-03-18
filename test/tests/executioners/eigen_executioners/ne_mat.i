@@ -64,7 +64,6 @@
   type = NonlinearEigen
 
   bx_norm = 'unorm'
-  xdiff = 'udiff'
   normalization = 'unorm'
   normal_factor = 9.990012561844
 
@@ -84,7 +83,7 @@
     type = ElementIntegralVariablePostprocessor
     variable = u
     # execute on residual is important for nonlinear eigen solver!
-    execute_on = residual
+    execute_on = linear
   [../]
 
   [./udiff]

@@ -201,6 +201,7 @@
     friction_angle = fric
     dilation_angle = dil
     yield_function_tolerance = 1.0 # THIS IS HIGHER THAN THE SMOOTH CASE TO AVOID PRECISION-LOSS PROBLEMS!
+    shift =  1.0
     internal_constraint_tolerance = 1E-9
   [../]
 []
@@ -254,15 +255,12 @@
 [Outputs]
   file_base = uni_axial3_planar
   output_initial = true
+  print_linear_residuals = true
+  print_perf_log = true
   [./exodus]
     type = Exodus
     interval = 1
     hide = 'stress_xx stress_xy stress_xz stress_yy stress_yz stress_zz yield_fcn s_xx s_xy s_xz s_yy s_yz s_zz f'
-  [../]
-  [./console]
-    type = Console
-    perf_log = true
-    linear_residuals = true
   [../]
   [./csv]
     type = CSV

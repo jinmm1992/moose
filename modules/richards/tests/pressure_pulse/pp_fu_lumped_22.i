@@ -191,11 +191,10 @@
   output_final = true
   interval = 10000
   exodus = true
+  print_linear_residuals = true
+  print_perf_log = true
   [./console]
     type = Console
-    perf_log = true
     interval = 1
-    linear_residuals = true
-    nonlinear_residuals = true
   [../]
 []

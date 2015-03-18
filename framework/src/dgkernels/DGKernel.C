@@ -49,12 +49,12 @@ InputParameters validParams<DGKernel>()
 DGKernel::DGKernel(const std::string & name, InputParameters parameters) :
     MooseObject(name, parameters),
     SetupInterface(parameters),
-    TransientInterface(parameters, name, "dgkernels"),
+    TransientInterface(parameters, "dgkernels"),
     FunctionInterface(parameters),
     UserObjectInterface(parameters),
     NeighborCoupleableMooseVariableDependencyIntermediateInterface(parameters, false, false),
-    TwoMaterialPropertyInterface(name, parameters),
-    Restartable(name, parameters, "DGKernels"),
+    TwoMaterialPropertyInterface(parameters),
+    Restartable(parameters, "DGKernels"),
     MeshChangedInterface(parameters),
     _subproblem(*parameters.get<SubProblem *>("_subproblem")),
     _sys(*parameters.get<SystemBase *>("_sys")),
@@ -62,7 +62,6 @@ DGKernel::DGKernel(const std::string & name, InputParameters parameters) :
     _assembly(_subproblem.assembly(_tid)),
     _var(_sys.getVariable(_tid, parameters.get<NonlinearVariableName>("variable"))),
     _mesh(_subproblem.mesh()),
-//    _dim(_mesh.dimension()),
 
     _current_elem(_assembly.elem()),
     _current_elem_volume(_assembly.elemVolume()),

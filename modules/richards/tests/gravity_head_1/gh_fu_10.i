@@ -119,8 +119,5 @@
 [Outputs]
   file_base = gh_fu_10
   exodus = true
-  [./console]
-    type = Console
-    perf_log = true
-  [../]
+  print_perf_log = true
 []

@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #ifndef EIGENSTRAINBASEMATERIAL_H
 #define EIGENSTRAINBASEMATERIAL_H
 
@@ -25,8 +31,9 @@ protected:
 
   std::string _eigenstrain_name;
   MaterialProperty<RankTwoTensor> & _eigenstrain;
-  MaterialProperty<RankTwoTensor> & _deigenstrain_dc;
-  MaterialProperty<RankTwoTensor> & _d2eigenstrain_dc2;
+
+  MaterialProperty<RankTwoTensor> & _delastic_strain_dc;
+  MaterialProperty<RankTwoTensor> & _d2elastic_strain_dc2;
 
   MaterialProperty<ElasticityTensorR4> & _delasticity_tensor_dc;
   MaterialProperty<ElasticityTensorR4> & _d2elasticity_tensor_dc2;

@@ -39,6 +39,8 @@ InputParameters validParams<MooseApp>()
   params.addCommandLineParam<std::string>("mesh_only", "--mesh-only", "Setup and Output the input mesh only.");
 
   params.addCommandLineParam<bool>("show_input", "--show-input", false, "Shows the parsed input file before running the simulation.");
+  params.addCommandLineParam<bool>("show_outputs", "--show-outputs", false, "Shows the output execution time information.");
+
   params.addCommandLineParam<bool>("no_color", "--no-color", false, "Disable coloring of all Console outputs.");
 
   params.addCommandLineParam<bool>("help", "-h --help", false, "Displays CLI usage statement.");
@@ -46,6 +48,7 @@ InputParameters validParams<MooseApp>()
   params.addCommandLineParam<std::string>("dump", "--dump [search_string]", "Shows a dump of available input file syntax.");
   params.addCommandLineParam<std::string>("yaml", "--yaml", "Dumps input file syntax in YAML format.");
   params.addCommandLineParam<bool>("syntax", "--syntax", false, "Dumps the associated Action syntax paths ONLY");
+  params.addCommandLineParam<bool>("check_input", "--check-input", false, "Check the input file (i.e. requires -i <filename>) and quit.");
 
   params.addCommandLineParam<unsigned int>("n_threads", "--n-threads=<n>", 1, "Runs the specified number of threads per process");
 
@@ -123,7 +126,8 @@ MooseApp::MooseApp(const std::string & name, InputParameters parameters) :
     _restart(false),
     _half_transient(false),
     _legacy_uo_aux_computation_default(getParam<bool>("use_legacy_uo_aux_computation")),
-    _legacy_uo_initialization_default(getParam<bool>("use_legacy_uo_initialization"))
+    _legacy_uo_initialization_default(getParam<bool>("use_legacy_uo_initialization")),
+    _check_input(getParam<bool>("check_input"))
 {
   if (isParamValid("_argc") && isParamValid("_argv"))
   {
@@ -248,6 +252,9 @@ MooseApp::setupOptions()
   }
   else
   {
+    if (_check_input)
+      mooseError("You specified --check-input, but did not provide an input file. Add -i <inputfile> to your command line.");
+
     _command_line->printUsage();
     _ready_to_exit = true;
   }
@@ -324,6 +331,12 @@ MooseApp::executeExecutioner()
     Moose::PetscSupport::petscSetupOutput(_command_line.get());
 #endif
     _executioner->init();
+    if (_check_input)
+    {
+      // Output to stderr, so it is easier for peacock to get the result
+      Moose::err << "Syntax OK" << std::endl;
+      return;
+    }
     _executioner->execute();
   }
   else
@@ -341,12 +354,10 @@ MooseApp::meshOnly(std::string mesh_file_name)
   _action_warehouse.executeActionsWithAction("setup_mesh");
   _action_warehouse.executeActionsWithAction("prepare_mesh");
   _action_warehouse.executeActionsWithAction("add_mesh_modifier");
+  _action_warehouse.executeActionsWithAction("uniform_refine_mesh");
   _action_warehouse.executeActionsWithAction("setup_mesh_complete");
 
-  // uniform refinement
   MooseSharedPointer<MooseMesh> & mesh = _action_warehouse.mesh();
-  MeshRefinement mesh_refinement(mesh->getMesh());
-  mesh_refinement.uniformly_refine(mesh->uniformRefineLevel());
 
   // If no argument specified or if the argument following --mesh-only starts
   // with a dash, try to build an output filename based on the input mesh filename.

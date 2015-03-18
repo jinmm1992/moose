@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #ifndef EXPRESSIONBUILDER_H
 #define EXPRESSIONBUILDER_H
 
@@ -200,7 +206,7 @@ public:
   class EBTernaryFuncTermNode : public EBTernaryTermNode
   {
   public:
-    enum NodeType { IFEXPR } type;
+    enum NodeType { CONDITIONAL } type;
 
     EBTernaryFuncTermNode(EBTermNode * _left, EBTermNode * _middle, EBTermNode * _right, NodeType _type) :
       EBTernaryTermNode(_left, _middle, _right), type(_type) {};
@@ -357,7 +363,7 @@ public:
     /**
      * Ternary functions
      */
-    friend EBTerm ifexpr(const EBTerm &, const EBTerm &, const EBTerm &);
+    friend EBTerm conditional(const EBTerm &, const EBTerm &, const EBTerm &);
   };
 
   // User facing host object for a function. This combines a term with an argument list.

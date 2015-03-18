@@ -1,5 +1,6 @@
 import urllib
 from FactorySystem import MooseObject
+import utils
 
 ##
 # Base class for markdown image maniuplation
@@ -13,71 +14,63 @@ class ImageBase(MooseObject):
     params.addParam('name', 'The image file name')
     params.addParam('url', 'The image file url')
     params.addParam('download', False, 'Download the image locally')
+    params.addPrivateParam('markdown') # The raw markdown source for this image
 
-    params.addParam('div_center', True, 'Wrap html figure in centered div')
+    params.addParam('div-center', True, 'Wrap html figure in centered div')
     params.addParam('align', 'The image horizontal alignment')
     params.addParam('width', 'The image width')
     params.addParam('height', 'The image height')
     params.addParam('style', 'The img style property')
     params.addParam('vertical-align', 'The vertical alignment of the image')
     params.addParam('text-align', 'Text alignment of image')
+    params.addParam('caption', 'The caption for the image')
     params.addParamsToGroup('html', ['align', 'width', 'height', 'vertical-align', 'text-align'])
 
     return params
-
-  @staticmethod
-  def extractName(match):
-    return None
 
   ##
   # Constructor
   def __init__(self, name, params):
     MooseObject.__init__(self, name, params)
     self.parent = self.getParam('_parent')
-    self.match = self.getParam('_match')
-
-    # Store the complete markdown image text
-    self._raw = self.match.group(0)
 
     # Set download flag (default is true)
     self._download = True
     if self.isParamValid('download'):
-      self._download = self._pars['download']
+      self.__download = self.parameters()['download']
 
   ##
   # Perform the matching
   # @param markdown The raw markdown to parse
-  # @return A list of match iterators (i.e., re.finditer)
-  @staticmethod
-  def match(markdown):
+  # @return A list of dictionaries
+  #
+  # The dicts must contains:
+  #  raw, url, caption, settings
+  def match(self, markdown):
     return []
-
-  ##
-  # Return the regex for performing image substitution (virtual)
-  def sub(self):
-    return ''
 
   ##
   # Return the image html for replacing the markdown image syntax
   def html(self):
 
     # Get the name and url
-    name = self.getParam('name')
+    name = self.name()
     url = self.getParam('url')
 
     # Do not download the image
-    if self._download:
+    if self.__download:
       urllib.urlretrieve(url, name)
       img_name = name
     else:
       img_name = url
 
     # Flag for wrapping in div
-    div = self.getParam('div_center')
-
+    div = self.getParam('div-center')
+    if isinstance(div, str):
+      div = utils.str2bool(div)
 
     # Create the html <img> block
-    img = ''
+    img = '\n\n'
     if div:
       img += '<div style="text-align:center;>\n'
     img += '<figure style="float:left">\n'
@@ -106,7 +99,6 @@ class ImageBase(MooseObject):
 
     if div:
       img += '</div>'
-
 
     # Return the complete html
     return img

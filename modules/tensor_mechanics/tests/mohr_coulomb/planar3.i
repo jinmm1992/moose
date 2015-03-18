@@ -209,6 +209,7 @@
     friction_angle = phi
     dilation_angle = psi
     yield_function_tolerance = 1E-8
+    shift = 1E-8
     internal_constraint_tolerance = 1E-9
   [../]
 []
@@ -251,11 +252,8 @@
   file_base = planar3
   output_initial = true
   exodus = false
-  [./console]
-    type = Console
-    perf_log = true
-    linear_residuals = false
-  [../]
+  print_linear_residuals = true
+  print_perf_log = true
   [./csv]
     type = CSV
     interval = 1

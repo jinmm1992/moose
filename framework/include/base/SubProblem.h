@@ -106,6 +106,12 @@ public:
   virtual void prepareNeighborShapes(unsigned int var, THREAD_ID tid) = 0;
   virtual Moose::CoordinateSystemType getCoordSystem(SubdomainID sid) = 0;
 
+  /**
+   * Returns the desired radial direction for RZ coordinate transformation
+   * @return The coordinate direction for the radial direction
+   */
+  unsigned int getAxisymmetricRadialCoord();
+
   virtual DiracKernelInfo & diracKernelInfo();
   virtual Real finalNonlinearResidual();
   virtual unsigned int nNonlinearIterations();
@@ -317,7 +323,6 @@ protected:
    * from boudnary/block id to multimap.  Each of the multimaps is a list of
    * requestor object names to material property names.
    */
-  /// the map of properties requested (need to be checked)
   std::map<unsigned int, std::multimap<std::string, std::string> > _map_block_material_props_check;
   std::map<unsigned int, std::multimap<std::string, std::string> > _map_boundary_material_props_check;
   ///@}
@@ -334,6 +339,9 @@ protected:
 
   /// Where the restartable data is held (indexed on tid)
   RestartableDatas _restartable_data;
+
+  /// Storage for RZ axis selection
+  unsigned int _rz_coord_axis;
 
 private:
 

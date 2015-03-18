@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 // Original class author: A.M. Jokisaari,  O. Heinonen
 
 #ifndef FINITESTRAINPLASTICMATERIAL_H
@@ -36,7 +42,7 @@ protected:
   Real _ftol;
   Real _eptol;
 
-  // outer and mixed product of teh delta function tensors
+  // outer and mixed product of the delta function tensors
   RankFourTensor _deltaOuter, _deltaMixed;
 
   /**

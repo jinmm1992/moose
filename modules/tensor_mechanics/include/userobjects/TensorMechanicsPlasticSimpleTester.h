@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #ifndef TENSORMECHANICSPLASTICSIMPLETESTER_H
 #define TENSORMECHANICSPLASTICSIMPLETESTER_H
 
@@ -20,6 +26,8 @@ class TensorMechanicsPlasticSimpleTester : public TensorMechanicsPlasticModel
  public:
   TensorMechanicsPlasticSimpleTester(const std::string & name, InputParameters parameters);
 
+  /// Returns the model name (SimpleTester)
+  virtual std::string modelName() const;
 
  protected:
 

@@ -12,8 +12,8 @@
 /*            See COPYRIGHT for full restrictions               */
 /****************************************************************/
 
-#ifndef OUTPUTBASE_H
-#define OUTPUTBASE_H
+#ifndef OUTPUT_H
+#define OUTPUT_H
 
 // MOOSE includes
 #include "MooseObject.h"
@@ -21,8 +21,8 @@
 #include "MooseTypes.h"
 #include "MooseMesh.h"
 #include "MeshChangedInterface.h"
-#include "MooseApp.h"
 #include "SetupInterface.h"
+#include "AdvancedOutputUtils.h"
 
 // libMesh
 #include "libmesh/equation_systems.h"
@@ -94,9 +94,38 @@ public:
   virtual int timeStep();
 
   /**
+   * Get the output interval
+   */
+  const unsigned int & interval() const;
+
+  /**
+   * Get the current 'output_on' selections for display
+   */
+  const MultiMooseEnum & outputOn() const;
+
+  /**
+   * Returns true if this object is an AdvancedOutput object
+   */
+  bool isAdvanced();
+
+  /**
+   * Returns the advanced output_on settings.
+   *
+   * Check if this is valid first with isAdvanced()
+   */
+  virtual const OutputOnWarehouse & advancedOutputOn() const;
+
+  /**
    * Return the support output execution times
+   * @param default_type The default MultiMooseEnum option
    */
   static MultiMooseEnum getExecuteOptions(std::string default_type = "");
+
+  /**
+   * Method for controlling the allow output state
+   * @param state The state to set the allow flag to
+   */
+  void allowOutput(bool state) { _allow_output = state; }
 
 
 protected:
@@ -108,7 +137,7 @@ protected:
    *
    * @see outputNodalVariables outputElementalVariables outputScalarVariables outputPostprocessors
    */
-  virtual void outputStep(const OutputExecFlagType & type) = 0;
+  virtual void outputStep(const ExecFlagType & type) = 0;
 
   /**
    * A method called just prior to timestep(), this is used by PetscOutput to perform the necessary
@@ -120,13 +149,25 @@ protected:
    * Handles logic for determining if a step should be output
    * @return True if a call if output should be preformed
    */
-  bool shouldOutput(const OutputExecFlagType & type);
+  bool shouldOutput(const ExecFlagType & type);
 
   /**
    * Returns true if the output interval is satisfied
    * \todo{Implement additional types of intervals (e.g., simulation time and real time)}
    */
   bool onInterval();
+
+  /**
+   * Initialization method.
+   * This populates the various data structures needed to control the output
+   */
+  virtual void init();
+
+  /**
+   * A method for modifying "output_on" MultiMooseEnums with the short-cut flag options
+   * @param input A reference to the enum to modifiy
+   */
+  void applyOutputOnShortCutFlags(MultiMooseEnum & input);
 
   /// Pointer the the FEProblem object for output object (use this)
   FEProblem * _problem_ptr;
@@ -145,14 +186,6 @@ protected:
 
   /// The common Execution types; this is used as the default execution type for everything except system information and input
   MultiMooseEnum _output_on;
-
-//private:
-
-  /**
-   * Initialization method.
-   * This populates the various data structures needed to control the output
-   */
-  virtual void init();
 
   /// The current time for output purposes
   Real & _time;
@@ -193,8 +226,19 @@ protected:
   /// True if init() has been called
   bool _initialized;
 
-  friend class OutputWarehouse;
+  /// Flag for disabling output
+  bool _allow_output;
 
+  /// Flag for advanced output testing
+  bool _is_advanced;
+
+  /// Storage for the individual component execute flags
+  // This is here rather than in AdvancedOutput to allow generic
+  // access to this data from the Console object for displaying
+  // the output settings.
+  OutputOnWarehouse _advanced_output_on;
+
+  friend class OutputWarehouse;
 };
 
 #endif /* OUTPUT_H */

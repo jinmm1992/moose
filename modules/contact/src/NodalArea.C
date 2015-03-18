@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "NodalArea.h"
 
 #include <numeric>
@@ -7,7 +13,7 @@ InputParameters validParams<NodalArea>()
 {
   InputParameters params = validParams<SideIntegralVariableUserObject>();
 
-  params.set<MultiMooseEnum>("execute_on") = "residual";
+  params.set<MultiMooseEnum>("execute_on") = "linear";
   return params;
 }
 

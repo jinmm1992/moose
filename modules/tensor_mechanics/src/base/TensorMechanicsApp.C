@@ -1,12 +1,20 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "TensorMechanicsApp.h"
 #include "Moose.h"
 #include "AppFactory.h"
 
 #include "TensorMechanicsAction.h"
+#include "PressureActionTM.h"
 
 #include "StressDivergenceTensors.h"
 #include "CosseratStressDivergenceTensors.h"
 #include "MomentBalancing.h"
+#include "GravityTM.h"
 
 #include "LinearElasticMaterial.h"
 #include "FiniteStrainElasticMaterial.h"
@@ -19,6 +27,13 @@
 #include "ElementPropertyReadFileTest.h"
 #include "TwoPhaseStressMaterial.h"
 #include "SimpleEigenStrainMaterial.h"
+#include "ComputeElasticityTensor.h"
+#include "ComputeIsotropicElasticityTensor.h"
+#include "ComputeSmallStrain.h"
+#include "ComputeFiniteStrain.h"
+#include "ComputeLinearElasticStress.h"
+#include "ComputeFiniteStrainElasticStress.h"
+#include "Compute1PhaseEigenStrain.h"
 
 #include "TensorMechanicsPlasticSimpleTester.h"
 #include "TensorMechanicsPlasticTensile.h"
@@ -43,6 +58,11 @@
 #include "FiniteStrainPlasticAux.h"
 #include "CrystalPlasticitySlipSysAux.h"
 #include "CrystalPlasticityRotationOutAux.h"
+#include "RankTwoScalarAux.h"
+#include "StressDivergencePFFracTensors.h"
+
+#include "PressureTM.h"
+
 
 template<>
 InputParameters validParams<TensorMechanicsApp>()
@@ -70,6 +90,7 @@ TensorMechanicsApp::~TensorMechanicsApp()
 {
 }
 
+extern "C" void TensorMechanicsApp_registerApps() { TensorMechanicsApp::registerApps(); }
 void
 TensorMechanicsApp::registerApps()
 {
@@ -82,6 +103,8 @@ TensorMechanicsApp::registerObjects(Factory & factory)
   registerKernel(StressDivergenceTensors);
   registerKernel(CosseratStressDivergenceTensors);
   registerKernel(MomentBalancing);
+  registerKernel(StressDivergencePFFracTensors);
+  registerKernel(GravityTM);
 
   registerMaterial(LinearElasticMaterial);
   registerMaterial(FiniteStrainElasticMaterial);
@@ -94,6 +117,13 @@ TensorMechanicsApp::registerObjects(Factory & factory)
   registerMaterial(ElementPropertyReadFileTest);
   registerMaterial(TwoPhaseStressMaterial);
   registerMaterial(SimpleEigenStrainMaterial);
+  registerMaterial(ComputeElasticityTensor);
+  registerMaterial(ComputeIsotropicElasticityTensor);
+  registerMaterial(ComputeSmallStrain);
+  registerMaterial(ComputeFiniteStrain);
+  registerMaterial(ComputeLinearElasticStress);
+  registerMaterial(ComputeFiniteStrainElasticStress);
+  registerMaterial(Compute1PhaseEigenStrain);
 
   registerUserObject(TensorMechanicsPlasticSimpleTester);
   registerUserObject(TensorMechanicsPlasticTensile);
@@ -118,6 +148,9 @@ TensorMechanicsApp::registerObjects(Factory & factory)
   registerAux(FiniteStrainPlasticAux);
   registerAux(CrystalPlasticitySlipSysAux);
   registerAux(CrystalPlasticityRotationOutAux);
+  registerAux(RankTwoScalarAux);
+
+  registerBoundaryCondition(PressureTM);
 }
 
 void
@@ -125,5 +158,9 @@ TensorMechanicsApp::associateSyntax(Syntax & syntax, ActionFactory & action_fact
 {
   syntax.registerActionSyntax("TensorMechanicsAction", "Kernels/TensorMechanics");
 
+  syntax.registerActionSyntax("EmptyAction", "BCs/PressureTM");
+  syntax.registerActionSyntax("PressureActionTM", "BCs/PressureTM/*");
+
   registerAction(TensorMechanicsAction, "add_kernel");
+  registerAction(PressureActionTM, "add_bc");
 }

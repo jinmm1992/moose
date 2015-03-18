@@ -40,6 +40,7 @@
 #include "Restartable.h"
 #include "SolverParams.h"
 #include "OutputWarehouse.h"
+#include "MooseApp.h"
 
 class DisplacedProblem;
 
@@ -111,6 +112,7 @@ public:
 
   virtual Moose::CoordinateSystemType getCoordSystem(SubdomainID sid);
   virtual void setCoordSystem(const std::vector<SubdomainName> & blocks, const MultiMooseEnum & coord_sys);
+  void setAxisymmetricCoordAxis(const MooseEnum & rz_coord_axis);
 
   /**
    * Set the coupling between variables
@@ -315,6 +317,40 @@ public:
 
   virtual void restoreSolutions();
 
+  /**
+   * Output the current step.
+   * Will ensure that everything is in the proper state to be outputted.
+   * Then tell the OutputWarehouse to do its thing
+   * @param type The type execution flag (see Moose.h)
+   */
+  void outputStep(ExecFlagType type);
+
+  ///@{
+  /**
+   * Ability to enable/disable all output calls
+   *
+   * This is needed by Multiapps and applications to disable output for cases when
+   * executioners call other executions and when Multiapps are sub cycling.
+   */
+  void allowOutput(bool state);
+  template<typename T> void allowOutput(bool state);
+  ///@}
+
+  /**
+   * Indicates that the next call to outputStep should be forced
+   *
+   * This is needed by the MultiApp system, if forceOutput is called the next call to outputStep,
+   * regardless of the type supplied to the call, will be executed with EXEC_FORCED.
+   *
+   * Forced output will NOT override the allowOutput flag.
+   */
+  void forceOutput();
+
+  /**
+   * Reinitialize petsc output for proper linear/nonlinear iteration display
+   */
+  void initPetscOutput();
+
   virtual const std::vector<MooseObject *> & getObjectsByName(const std::string & name, THREAD_ID tid);
 
   // Function /////
@@ -457,6 +493,11 @@ public:
   ExecStore<PostprocessorWarehouse> & getPostprocessorWarehouse();
 
   /**
+   * Get a reference to the UserObjectWarehouse ExecStore object
+   */
+  ExecStore<UserObjectWarehouse> & getUserObjectWarehouse();
+
+  /**
    * Returns whether or not the current simulation has any multiapps
    */
   bool hasMultiApps() const { return _has_multiapps; }
@@ -493,8 +534,8 @@ public:
   ExecStore<VectorPostprocessorWarehouse> & getVectorPostprocessorWarehouse();
 
 
-  virtual void computeUserObjects(ExecFlagType type = EXEC_TIMESTEP, UserObjectWarehouse::GROUP group = UserObjectWarehouse::ALL);
-  virtual void computeAuxiliaryKernels(ExecFlagType type = EXEC_RESIDUAL);
+  virtual void computeUserObjects(ExecFlagType type = EXEC_TIMESTEP_END, UserObjectWarehouse::GROUP group = UserObjectWarehouse::ALL);
+  virtual void computeAuxiliaryKernels(ExecFlagType type = EXEC_LINEAR);
 
   // Dampers /////
   void addDamper(std::string damper_name, const std::string & name, InputParameters parameters);
@@ -822,7 +863,6 @@ public:
   void setErrorOnJacobianNonzeroReallocation(bool state) { _error_on_jacobian_nonzero_reallocation = state; }
 
 
-
 protected:
   /// Data names that will only be read from the restart file during RECOVERY
   std::set<std::string> _recoverable_data;
@@ -1011,5 +1051,12 @@ private:
   friend class Restartable;
   friend class DisplacedProblem;
 };
+
+template<typename T>
+void
+FEProblem::allowOutput(bool state)
+{
+  _app.getOutputWarehouse().allowOutput<T>(state);
+}
 
 #endif /* FEPROBLEM_H */

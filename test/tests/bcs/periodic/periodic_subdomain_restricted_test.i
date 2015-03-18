@@ -97,8 +97,5 @@
   file_base = out_restrict
   interval = 1
   exodus = true
-  [./console]
-    type = Console
-    perf_log = true
-  [../]
+  print_perf_log = true
 []

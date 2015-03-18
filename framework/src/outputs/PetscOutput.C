@@ -27,12 +27,14 @@ InputParameters validParams<PetscOutput>()
 
   // Toggled for outputting nonlinear and linear residuals, only if we have PETSc
 #ifdef LIBMESH_HAVE_PETSC
+  params.addParam<bool>("output_linear", false, "Specifies whether output occurs on each linear residual evaluation");
+  params.addParam<bool>("output_nonlinear", false, "Specifies whether output occurs on each nonlinear residual evaluation");
 
   // **** DEPRECATED PARAMETERS ****
   params.addDeprecatedParam<bool>("linear_residuals", false, "Specifies whether output occurs on each linear residual evaluation",
-                                  "Please include 'residual' in the 'output_on' execution list to get this behavior.");
+                                  "Please use 'output_linear' to get this behavior.");
   params.addDeprecatedParam<bool>("nonlinear_residuals", false, "Specifies whether output occurs on each nonlinear residual evaluation",
-                                  "Please include 'nonresidual' in the 'output_on' execution list to get this behavior.");
+                                  "Please use 'output_nonlinear' to get this behavior.");
   // Psuedo time step divisors
   params.addParam<Real>("nonlinear_residual_dt_divisor", 1000, "Number of divisions applied to time step when outputting non-linear residuals");
   params.addParam<Real>("linear_residual_dt_divisor", 1000, "Number of divisions applied to time step when outputting linear residuals");
@@ -65,6 +67,12 @@ PetscOutput::PetscOutput(const std::string & name, InputParameters & parameters)
     _nonlinear_end_time(std::numeric_limits<Real>::max()),
     _linear_end_time(std::numeric_limits<Real>::max())
 {
+  // Output toggle support
+  if (getParam<bool>("output_linear"))
+    _output_on.push_back("linear");
+  if (getParam<bool>("output_nonlinear"))
+    _output_on.push_back("nonlinear");
+
   // **** DEPRECATED PARAMETER SUPPORT ****
   if (getParam<bool>("linear_residuals"))
     _output_on.push_back("linear");
@@ -113,17 +121,21 @@ PetscOutput::timestepSetupInternal()
 
   // Update the pseudo times
   _nonlinear_time = _time_old;                   // non-linear time starts with the previous time step
-  _nonlinear_dt = _dt/_nonlinear_dt_divisor;     // set the pseudo non-linear timestep
+  if (_dt != 0)
+    _nonlinear_dt = _dt/_nonlinear_dt_divisor;     // set the pseudo non-linear timestep as fraction of real timestep for transient executioners
+  else
+    _nonlinear_dt = 1./_nonlinear_dt_divisor;     // set the pseudo non-linear timestep for steady executioners (here _dt==0)
+
   _linear_dt = _nonlinear_dt/_linear_dt_divisor; // set the pseudo linear timestep
 
   // Set the PETSc monitor functions
-  if (_output_on.contains(OUTPUT_NONLINEAR) && (_time >= _nonlinear_start_time - _t_tol && _time <= _nonlinear_end_time + _t_tol) )
+  if (_output_on.contains(EXEC_NONLINEAR) && (_time >= _nonlinear_start_time - _t_tol && _time <= _nonlinear_end_time + _t_tol) )
   {
     PetscErrorCode ierr = SNESMonitorSet(snes, petscNonlinearOutput, this, PETSC_NULL);
     CHKERRABORT(_communicator.get(),ierr);
   }
 
-  if (_output_on.contains(OUTPUT_LINEAR) && (_time >= _linear_start_time - _t_tol && _time <= _linear_end_time + _t_tol) )
+  if (_output_on.contains(EXEC_LINEAR) && (_time >= _linear_start_time - _t_tol && _time <= _linear_end_time + _t_tol) )
   {
     PetscErrorCode ierr = KSPMonitorSet(ksp, petscLinearOutput, this, PETSC_NULL);
     CHKERRABORT(_communicator.get(),ierr);
@@ -151,7 +163,7 @@ PetscOutput::petscNonlinearOutput(SNES, PetscInt its, PetscReal norm, void * voi
   ptr->_on_nonlinear_residual = true;
 
   // Perform the output
-  ptr->outputStep(OUTPUT_NONLINEAR);
+  ptr->outputStep(EXEC_NONLINEAR);
 
   // Reset the non-linear output flag and the simulation time
   ptr->_on_nonlinear_residual = false;
@@ -177,7 +189,7 @@ PetscOutput::petscLinearOutput(KSP, PetscInt its, PetscReal norm, void * void_pt
   ptr->_on_linear_residual = true;
 
   // Perform the output
-  ptr->outputStep(OUTPUT_LINEAR);
+  ptr->outputStep(EXEC_LINEAR);
 
   // Reset the linear output flag and the simulation time
   ptr->_on_linear_residual = false;

@@ -63,19 +63,15 @@
 [Outputs]
   output_initial = true
   exodus = true
-  [./console]
-    type = Console
-    perf_log = true
-    nonlinear_residuals = true
-    linear_residuals = true
-  [../]
+  print_linear_residuals = true
+  print_perf_log = true
 []
 
 [MultiApps]
   [./auto_pos]
     type = AutoPositionsMultiApp
     app_type = MooseTestApp
-    execute_on = timestep
+    execute_on = timestep_end
     input_files = sub.i
     boundary = right
   [../]

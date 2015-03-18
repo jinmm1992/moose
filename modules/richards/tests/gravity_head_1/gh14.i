@@ -120,8 +120,5 @@
 [Outputs]
   file_base = gh14
   exodus = true
-  [./console]
-    type = Console
-    perf_log = true
-  [../]
+  print_perf_log = true
 []

@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "ExpressionBuilder.h"
 
 #include "MooseError.h"
@@ -128,7 +134,7 @@ ExpressionBuilder::EBBinaryOpTermNode::precedence() const
 std::string
 ExpressionBuilder::EBTernaryFuncTermNode::stringify() const
 {
-  const char * name[] = { "ifexpr" };
+  const char * name[] = { "if" };
   std::ostringstream s;
   s << name[type] << '(' << *left << ',' << *middle << ',' << *right << ')';
   return s.str();
@@ -272,7 +278,7 @@ ExpressionBuilder::EBTerm op (const ExpressionBuilder::EBTerm & left, const Expr
     new ExpressionBuilder::EBTernaryFuncTermNode(left.root->clone(), middle.root->clone(), right.root->clone(), ExpressionBuilder::EBTernaryFuncTermNode::OP) \
   ); \
 }
-TERNARY_FUNC_IMPLEMENT(ifexpr,IFEXPR)
+TERNARY_FUNC_IMPLEMENT(conditional,CONDITIONAL)
 
 unsigned int
 ExpressionBuilder::EBUnaryTermNode::substitute(const EBSubstitutionRuleList & rules)

@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #ifndef STRESSDIVERGENCETENSORS_H
 #define STRESSDIVERGENCETENSORS_H
 
@@ -36,7 +42,6 @@ protected:
 
   const unsigned int _component;
 
-private:
   const bool _xdisp_coupled;
   const bool _ydisp_coupled;
   const bool _zdisp_coupled;
@@ -46,6 +51,9 @@ private:
   const unsigned int _ydisp_var;
   const unsigned int _zdisp_var;
   const unsigned int _temp_var;
+
+private:
+
 };
 
 #endif //STRESSDIVERGENCETENSORS_H

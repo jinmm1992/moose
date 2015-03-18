@@ -17,7 +17,7 @@
 #include "SubProblem.h"
 #include "FEProblem.h"
 
-Coupleable::Coupleable(InputParameters & parameters, bool nodal) :
+Coupleable::Coupleable(const InputParameters & parameters, bool nodal) :
     _c_fe_problem(*parameters.getCheckedPointerParam<FEProblem *>("_fe_problem")),
     _nodal(nodal),
     _c_is_implicit(parameters.have_parameter<bool>("implicit") ? parameters.get<bool>("implicit") : true),
@@ -86,7 +86,13 @@ Coupleable::isCoupled(const std::string & var_name, unsigned int i)
   if (it != _coupled_vars.end())
     return (i < it->second.size());
   else
+  {
+    // Make sure the user originally requested this value in the InputParameter syntax
+    if (!_coupleable_params.hasCoupledValue(var_name))
+      mooseError("The coupled variable \"" << var_name << "\" was never added to this objects's InputParameters, please double-check your spelling");
+
     return false;
+  }
 }
 
 unsigned int

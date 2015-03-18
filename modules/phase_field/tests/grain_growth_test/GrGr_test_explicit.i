@@ -51,7 +51,7 @@
   [./BndsCalc]
     type = BndsCalcAux
     variable = bnds
-    execute_on = timestep
+    execute_on = timestep_end
   [../]
 []
 
@@ -71,7 +71,7 @@
   [./gr1area]
     type = ElementIntegralVariablePostprocessor
     variable = gr1
-    execute_on = 'initial timestep'
+    execute_on = 'initial timestep_end'
   [../]
 []
 
@@ -102,11 +102,8 @@
   csv = true
   interval = 20
   exodus = true
-  [./console]
-    type = Console
-    perf_log = true
-    linear_residuals = true
-  [../]
+  print_linear_residuals = true
+  print_perf_log = true
 []
 
 [Problem]

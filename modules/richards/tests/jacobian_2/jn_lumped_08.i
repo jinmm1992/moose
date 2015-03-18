@@ -183,8 +183,5 @@
 [Outputs]
   file_base = jn116
   exodus = false
-  [./console]
-    type = Console
-    perf_log = false
-  [../]
+  print_perf_log = true
 []

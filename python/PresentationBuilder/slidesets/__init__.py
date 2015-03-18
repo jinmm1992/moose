@@ -1,7 +1,8 @@
 from SlideSetWarehouse import SlideSetWarehouse
 from INLSetInterface import INLSetInterface
-from SlideSet import SlideSet
+from RemarkSlideSet import RemarkSlideSet
 from FileSet import FileSet
+from INLFileSet import INLFileSet
 from DjangoWikiSet import DjangoWikiSet
 from INLDjangoWikiSet import INLDjangoWikiSet
 from CoverSet import CoverSet
@@ -10,8 +11,9 @@ from INLMergeCoverSet import INLMergeCoverSet
 
 __all__ = ['SlideSetWarehouse',
            'INLSetInterface',
-           'SlideSet',
+           'RemarkSlideSet',
            'FileSet',
+           'INLFileSet',
            'DjangoWikiSet',
            'INLDjangoWikiSet',
            'CoverSet',

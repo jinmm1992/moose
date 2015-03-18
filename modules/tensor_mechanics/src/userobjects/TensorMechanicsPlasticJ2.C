@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "TensorMechanicsPlasticJ2.h"
 
 template<>
@@ -83,4 +89,8 @@ TensorMechanicsPlasticJ2::dyieldStrength(const Real & intnl) const
   return _strength.derivative(intnl);
 }
 
-
+std::string
+TensorMechanicsPlasticJ2::modelName() const
+{
+  return "J2";
+}

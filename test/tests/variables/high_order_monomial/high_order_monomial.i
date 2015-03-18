@@ -51,19 +51,19 @@
     type = FunctionAux
     variable = first
     function = first
-    execute_on = timestep
+    execute_on = timestep_end
   [../]
   [./second]
     type = FunctionAux
     variable = second
     function = second
-    execute_on = timestep
+    execute_on = timestep_end
   [../]
   [./third]
     type = FunctionAux
     variable = third
     function = third
-    execute_on = timestep
+    execute_on = timestep_end
   [../]
 []
 
@@ -111,9 +111,6 @@
 [Outputs]
   output_initial = true
   exodus = true
-  [./console]
-    type = Console
-    perf_log = true
-    linear_residuals = true
-  [../]
+  print_linear_residuals = true
+  print_perf_log = true
 []

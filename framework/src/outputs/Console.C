@@ -41,8 +41,9 @@ InputParameters validParams<Console>()
   params.addParam<unsigned int>("max_rows", 15, "The maximum number of postprocessor/scalar values displayed on screen during a timestep (set to 0 for unlimited)");
   params.addParam<MooseEnum>("fit_mode", pps_fit_mode, "Specifies the wrapping mode for post-processor tables that are printed to the screen (ENVIRONMENT: Read \"MOOSE_PPS_WIDTH\" for desired width, AUTO: Attempt to determine width automatically (serial only), <n>: Desired width");
 
-  // Timestep verbosity
+  // Verbosity
   params.addParam<bool>("verbose", false, "Print detailed diagnostics on timestep calculation");
+  params.addParam<bool>("show_output_on", false, "Print the output execution with the system information");
 
   // Basic table output controls
   params.addParam<bool>("scientific_time", false, "Control the printing of time and dt in scientific notation");
@@ -69,8 +70,6 @@ InputParameters validParams<Console>()
   multiplier.push_back(2);
   params.addParam<std::vector<Real> >("outlier_multiplier", multiplier, "Multiplier utilized to determine if a residual norm is an outlier. If the variable residual is less than multiplier[0] times the total residual it is colored red. If the variable residual is less than multiplier[1] times the average residual it is colored yellow.");
 
-  // By default set System Information to output on initial
-  params.set<MultiMooseEnum>("output_system_information_on") = "initial";
 
   // Advanced group
   params.addParamNamesToGroup("max_rows fit_node verbose show_multiapp_name", "Advanced");
@@ -84,13 +83,21 @@ InputParameters validParams<Console>()
   // Variable norms group
   params.addParamNamesToGroup("outlier_variable_norms all_variable_norms outlier_multiplier", "Norms");
 
-  // By default the Console object outputs nonlinear iterations and failed timesteps
-  params.set<MultiMooseEnum>("output_on").push_back("nonlinear");
-  params.set<MultiMooseEnum>("output_on").push_back("failed");
+  /*
+   * The following modifies the default behavior from base class parameters. Notice the extra flag on
+   * the set method. This enables "quiet mode". This is done to allow for the proper detection
+   * of user-modified parameters
+   */
+  // By default set System Information to output on initial
+  params.set<MultiMooseEnum>("output_system_information_on", /*quiet_mode=*/true) = "initial";
+
+  // Change the default behavior of 'output_on' to included nonlinear iterations and failed timesteps
+  params.set<MultiMooseEnum>("output_on", /*quiet_mode=*/true).push_back("nonlinear failed");
 
   // By default postprocessors and scalar are only output at the end of a timestep
-  params.set<MultiMooseEnum>("output_postprocessors_on") = "timestep_end";
-  params.set<MultiMooseEnum>("output_scalars_on") = "timestep_end";
+  params.set<MultiMooseEnum>("output_postprocessors_on", /*quiet_mode=*/true) = "timestep_end";
+  params.set<MultiMooseEnum>("output_vector_postprocessors_on", /*quiet_mode=*/true) = "timestep_end";
+  params.set<MultiMooseEnum>("output_scalars_on", /*quiet_mode=*/true) = "timestep_end";
 
   return params;
 }
@@ -117,9 +124,21 @@ Console::Console(const std::string & name, InputParameters parameters) :
     _outlier_variable_norms(getParam<bool>("outlier_variable_norms")),
     _outlier_multiplier(getParam<std::vector<Real> >("outlier_multiplier")),
     _precision(isParamValid("time_precision") ? getParam<unsigned int>("time_precision") : 0),
+    _show_output_on_info(getParam<bool>("show_output_on")),
     _timing(_app.getParam<bool>("timing")),
     _console_buffer(_app.getOutputWarehouse().consoleBuffer())
 {
+  // Apply the special common console flags (print_...)
+  ActionWarehouse & awh = _app.actionWarehouse();
+  Action * common_action = awh.getActionsByName("common_output")[0];
+  if (!_pars.paramSetByUser("output_on") && common_action->getParam<bool>("print_linear_residuals"))
+    _output_on.push_back("linear");
+  if (!_pars.paramSetByUser("perf_log") && common_action->getParam<bool>("print_perf_log"))
+  {
+    _perf_log = true;
+    _solve_log = true;
+    _setup_log = true;
+  }
 
   // If --timing was used from the command-line, do nothing, all logs are enabled
   if (!_timing)
@@ -149,6 +168,10 @@ Console::Console(const std::string & name, InputParameters parameters) :
         Moose::_color_console = false;
     }
   }
+
+  // If --show-outputs is used, enable it
+  if (_app.getParam<bool>("show_outputs"))
+    _show_output_on_info = true;
 }
 
 Console::~Console()
@@ -223,11 +246,15 @@ Console::filename()
 }
 
 void
-Console::output(const OutputExecFlagType & type)
+Console::output(const ExecFlagType & type)
 {
   // Return if the current output is not on the desired interval
-  if (type != OUTPUT_FINAL && !onInterval())
+  if (type != EXEC_FINAL && !onInterval())
     return;
+
+  // Flush the Console buffer, if we don't do this here then the linear/nonlinear residual output
+  // may write to the screen prior to buffered text
+  _app.getOutputWarehouse().flushConsoleBuffer();
 
   // Output the system information first; this forces this to be the first item to write by default
   // However, 'output_system_information_on' still operates correctly, so it may be changed by the user
@@ -239,11 +266,11 @@ Console::output(const OutputExecFlagType & type)
     outputInput();
 
   // Write the timestep information ("Time Step 0 ..."), this is may be controlled with "execute_on"
-  if (type == OUTPUT_TIMESTEP_BEGIN || (type == OUTPUT_INITIAL && _output_on.contains(OUTPUT_INITIAL)))
+  if (type == EXEC_TIMESTEP_BEGIN || (type == EXEC_INITIAL && _output_on.contains(EXEC_INITIAL)))
     writeTimestepInformation();
 
   // Print Non-linear Residual (control with "execute_on")
-  if (type == OUTPUT_NONLINEAR && _output_on.contains(OUTPUT_NONLINEAR))
+  if (type == EXEC_NONLINEAR && _output_on.contains(EXEC_NONLINEAR))
   {
     if (_write_screen)
       Moose::out << _multiapp_indent << std::setw(2) << _nonlinear_iter << " Nonlinear |R| = " << outputNorm(_old_nonlinear_norm, _norm) << std::endl;
@@ -253,7 +280,7 @@ Console::output(const OutputExecFlagType & type)
   }
 
   // Print Linear Residual (control with "execute_on")
-  else if (type == OUTPUT_LINEAR && _output_on.contains(OUTPUT_LINEAR))
+  else if (type == EXEC_LINEAR && _output_on.contains(EXEC_LINEAR))
   {
     if (_write_screen)
       Moose::out << _multiapp_indent << std::setw(7) << _linear_iter << " Linear |R| = " <<  outputNorm(_old_linear_norm, _norm) << std::endl;
@@ -263,7 +290,7 @@ Console::output(const OutputExecFlagType & type)
   }
 
   // Write variable norms
-  else if (type == OUTPUT_TIMESTEP_END)
+  else if (type == EXEC_TIMESTEP_END)
     writeVariableNorms();
 
   // Write Postprocessors and Scalars
@@ -555,7 +582,7 @@ Console::outputSystemInformation()
   {
     oss << "LEGACY MODES ENABLED:\n";
     if (_problem_ptr->legacyUoAuxComputation())
-      oss << "  Computing EXEC_RESIDUAL AuxKernel types when any UserObject type is executed.\n";
+      oss << "  Computing EXEC_LINEAR AuxKernel types when any UserObject type is executed.\n";
     if (_problem_ptr->legacyUoInitialization())
       oss << "  Computing all UserObjects during initial setup.\n";
   }
@@ -701,6 +728,30 @@ Console::outputSystemInformation()
   if (!pc_desc.empty())
     oss << std::setw(_field_width) << "  Preconditioner: " << pc_desc << '\n';
   oss << '\n';
+
+  // Output information
+  if (_show_output_on_info)
+  {
+    const std::vector<Output *> & outputs = _app.getOutputWarehouse().all();
+    oss << "Outputs:\n";
+    for (std::vector<Output *>::const_iterator it = outputs.begin(); it != outputs.end(); ++it)
+    {
+      // Display the "output_on" settings
+      const MultiMooseEnum & output_on = (*it)->outputOn();
+      oss << "  " << std::setw(_field_width-2) << (*it)->name() <<  "\"" << output_on << "\"\n";
+
+      // Display the advanced "output_on" settings, only if they are different from "output_on"
+      if ((*it)->isAdvanced())
+      {
+        const OutputOnWarehouse & adv_on = (*it)->advancedOutputOn();
+        for (std::map<std::string, MultiMooseEnum>::const_iterator adv_it = adv_on.begin(); adv_it != adv_on.end(); ++adv_it)
+          if (output_on != adv_it->second)
+            oss << "    " << std::setw(_field_width-4) << adv_it->first + ":" <<  "\"" << adv_it->second << "\"\n";
+      }
+    }
+  }
+
+  oss << "\n\n";
 
   // Output the information
   write(oss.str());

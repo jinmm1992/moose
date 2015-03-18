@@ -109,14 +109,11 @@
   file_base = circle
   output_initial = true
   exodus = true
+  print_linear_residuals = true
+  print_perf_log = true
   [./circle_oversample]
     type = Exodus
     file_base = circle_oversample
     refinements = 3
-  [../]
-  [./console]
-    type = Console
-    perf_log = true
-    linear_residuals = true
   [../]
 []

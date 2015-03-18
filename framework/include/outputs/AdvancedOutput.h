@@ -23,141 +23,12 @@
 #include "MooseMesh.h"
 #include "MeshChangedInterface.h"
 #include "MooseApp.h"
+#include "AdvancedOutputUtils.h"
 
 // libMesh
 #include "libmesh/equation_systems.h"
 #include "libmesh/numeric_vector.h"
 #include "libmesh/mesh_function.h"
-
-/**
- * A structure for storing the various lists that contain
- * the names of the items to be exported. An instance of this
- * struct exists for each of the output types (non-linear variables,
- * scalar variables, postprocessors, etc.)
- *
- * @see OutputDataWarehouse
- */
-struct OutputData
-{
-  /// A list of all possible outputs
-  std::vector<std::string> available;
-
-  /// User-supplied list of outputs to display
-  std::vector<std::string> show;
-
-  /// User-supplied list of outputs to hide
-  std::vector<std::string> hide;
-
-  /// A list of the outputs to write
-  std::vector<std::string> output;
-};
-
-
-/**
- * In newer versions of Clang calling operator[] on a map with a component that
- * has a default constructor is an error, thus utilizing a map directly to store
- * a MultiMooseEnum is not possible.
- *
- * This template class is a map wrapper that provides the basic map-like functionality
- * for accessing map types with operator[] by using find internally. It also produces
- * an error if the map key does not exists, this it provides a layer of protection not
- * available to maps operator[] in general.
- *
- * This class is used here to create two different warehouse containers below.
- *
- * @see OutputOnWarehouse OutputDataWarehouse
- */
-template<typename T>
-class OutputMapWrapper
-{
-public:
-  /**
-   * Constructor
-   */
-  OutputMapWrapper(){};
-
-  /**
-   * An map assessor that errors if the key is not found
-   */
-  T & operator[](const std::string & name)
-  {
-    // Locate the map entry, error if it is not found
-    typename std::map<std::string, T>::iterator iter = _map.find(name);
-    if (iter == _map.end())
-      mooseError("Unknown map key " << name);
-    return iter->second;
-  }
-
-  ///@{
-  /**
-   * Provide iterator and find access to the underlying map data
-   */
-  typename std::map<std::string, T>::iterator begin() { return _map.begin(); }
-  typename std::map<std::string, T>::iterator end() { return _map.end(); }
-  typename std::map<std::string, T>::iterator find(const std::string & name) { return _map.find(name); }
-  ///@}
-
-  /**
-   * A method for testing of a key exists
-   */
-  bool contains(const std::string & name) { return find(name) != end(); }
-
-
-protected:
-
-  /// Data storage
-  typename std::map<std::string, T> _map;
-};
-
-
-/**
- * A helper warehouse class for storing the "output_on" settings for
- * the various output types.
- *
- * In order to allow for new output types to be defined and to minimize
- * the number of member variables the "output_on" parameter for each of
- * the output types (e.g., output_postprocessors_on) are stored in a map.
- *
- * This allows for iterative access to these parameters, which makes creating
- * generic code (e.g., AdvancedOutput::shouldOutput) possible. However, MultiMooseEnum
- * has a private constructor, so calling operator[] on the map is a compile time error.
- *
- * To get around this and to provide a more robust storage structure, one that will error
- * if the wrong output name is given, this warehouse was created. For the purposes of the
- * AdvancedOutput object this warehouse functions exactly like a std::map, but provides
- * an operator[] that works with MultiMooseEnum and errors if called on an invalid key.
- *
- * @see OutputMapWrapper OutputDataWarehouse
- */
-class OutputOnWarehouse : public OutputMapWrapper<MultiMooseEnum>
-{
-public:
-
-  /**
-   * Constructor
-   * @param output_on The general "output_on" settings for the object
-   */
-  OutputOnWarehouse(const MultiMooseEnum & output_on, const InputParameters & params);
-};
-
-/**
- * A helper warehouse for storing OutputData objects for the various output types
- *
- * To keep syntax consistent and to provide the error checking for accessing invalid map keys
- * the OutputMapWrapper is used for accessing the OutputData classes as well.
- *
- * @see OutputOnWarehouse OutputMapWrapper OutputData
- */
-class OutputDataWarehouse : public OutputMapWrapper<OutputData>
-{
-public:
-
-  /**
-   * Populate the OutputData structures for all output types that are 'variable' based
-   */
-  OutputDataWarehouse();
-};
-
 
 /**
  * Based class for output objects
@@ -167,10 +38,13 @@ public:
  *
  * @see Exodus Console CSV
  */
-template<class OutputBase>
-class AdvancedOutput : public OutputBase
+template<class T>
+class AdvancedOutput : public T
 {
 public:
+
+  // A typedef
+  typedef const T OutputBase;
 
   /**
    * Class constructor
@@ -197,7 +71,7 @@ public:
    *
    * @see Exodus
    */
-  bool hasOutput(const OutputExecFlagType & type);
+  bool hasOutput(const ExecFlagType & type);
 
   /**
    * Returns true if there exists nodal nonlinear variables for output
@@ -218,7 +92,7 @@ public:
    *
    * @see hasNodalVariableOutput
    */
-  const std::vector<std::string> & getNodalVariableOutput();
+  const std::set<std::string> & getNodalVariableOutput();
 
   /**
    * Returns true if there exists elemental nonlinear variables for output
@@ -232,7 +106,7 @@ public:
    * @return A vector of strings containing the names of the nonlinear variables for output
    * @see hasElementalVariableOutput
    */
-  const std::vector<std::string> & getElementalVariableOutput();
+  const std::set<std::string> & getElementalVariableOutput();
 
   /**
    * Returns true if there exists scalar variables for output
@@ -246,7 +120,7 @@ public:
    * @return A vector of strings containing the names of the scalar variables for output
    * @see hasScalarVariableOutput
    */
-  const std::vector<std::string> & getScalarOutput();
+  const std::set<std::string> & getScalarOutput();
 
   /**
    * Returns true if there exists postprocessors for output
@@ -260,7 +134,7 @@ public:
    * @return A vector of strings containing the names of the postprocessor variables for output
    * @see hasPostprocessorOutput
    */
-  const std::vector<std::string> & getPostprocessorOutput();
+  const std::set<std::string> & getPostprocessorOutput();
 
   /**
    * Returns true if there exists VectorPostprocessors for output
@@ -274,7 +148,7 @@ public:
    * @return A vector of strings containing the names of the VectorPostprocessor variables for output
    * @see hasVectorPostprocessorOutput
    */
-  const std::vector<std::string> & getVectorPostprocessorOutput();
+  const std::set<std::string> & getVectorPostprocessorOutput();
 
   /**
    * A method for enabling individual output type control
@@ -306,6 +180,10 @@ public:
    */
   static InputParameters enableOutputTypes(const std::string & names = std::string());
 
+  /**
+   * Get the current advanced 'output_on' selections for display
+   */
+  const OutputOnWarehouse & advancedOutputOn() const;
 
 protected:
 
@@ -313,7 +191,7 @@ protected:
    * Calls the output() method if output should occur
    * @param type The type execution flag (see Moose.h)
    */
-  void outputStep(const OutputExecFlagType & type);
+  void outputStep(const ExecFlagType & type);
 
   /**
    * A single call to this function should output all the necessary data for a single timestep. By
@@ -323,7 +201,7 @@ protected:
    *
    * @see outputNodalVariables outputElementalVariables outputScalarVariables outputPostprocessors
    */
-  virtual void output(const OutputExecFlagType & type);
+  virtual void output(const ExecFlagType & type);
 
   /**
    * Performs output of nodal nonlinear variables
@@ -372,6 +250,7 @@ protected:
    */
   virtual void outputSystemInformation();
 
+
 private:
 
   /**
@@ -406,8 +285,8 @@ private:
    * @param warehouse Reference to the postprocessor or vector postprocessor warehouse
    */
   template <typename warehouse_type, typename postprocessor_type>
-  bool
-  initPostprocessorOrVectorPostprocessorLists(OutputData & output_data, warehouse_type & warehouse);
+  void
+  initPostprocessorOrVectorPostprocessorLists(const std::string & output_data_name, warehouse_type & warehouse);
 
   /**
    * Initializes the list of items to be output using the available, show, and hide lists
@@ -419,7 +298,7 @@ private:
    * Handles logic for determining if a step should be output
    * @return True if a call if output should be preformed
    */
-  bool shouldOutput(const std::string & name, const OutputExecFlagType & type);
+  bool shouldOutput(const std::string & name, const ExecFlagType & type);
 
   /**
    * Method for defining the available parameters based on the types of outputs
@@ -450,9 +329,6 @@ private:
   /// Storage structures for the various output types
   OutputDataWarehouse _output_data;
 
-  /// Storage for the individual component execute flags
-  OutputOnWarehouse _advanced_output_on;
-
   /// Storage for the last output time for the various output types, this is used to avoid duplicate output when using OUTPUT_FINAL flag
   std::map<std::string, Real> _last_output_time;
 
@@ -466,12 +342,21 @@ private:
 };
 
 // Helper function for initAvailableLists, templated on warehouse type and postprocessor_type
-template <class OutputBase>
+template <class T>
 template <typename warehouse_type, typename postprocessor_type>
-bool
-AdvancedOutput<OutputBase>::initPostprocessorOrVectorPostprocessorLists(OutputData & output_data, warehouse_type & warehouse)
+void
+AdvancedOutput<T>::initPostprocessorOrVectorPostprocessorLists(const std::string & output_data_name, warehouse_type & warehouse)
 {
-  // Return value
+
+  // Convience reference to the OutputData being operated on (should used "postprocessors" or "vector_postprocessors")
+  OutputData & output_data = _output_data[output_data_name];
+
+  // Build the input file parameter name (i.e. "output_postprocessors_on" or "output_vector_postprocessors_on")
+  std::ostringstream oss;
+  oss << "output_" << output_data_name << "_on";
+  std::string output_on_name = oss.str();
+
+  // True if the postprocessors has been limited using 'outputs' parameter
   bool has_limited_pps = false;
 
   // Loop through each of the execution flags
@@ -482,23 +367,23 @@ AdvancedOutput<OutputBase>::initPostprocessorOrVectorPostprocessorLists(OutputDa
          postprocessor_it != warehouse(Moose::exec_types[i])[0].all().end();
          ++postprocessor_it)
     {
-      // Store the name in the available postprocessors
+      // Store the name in the available postprocessors, if it does not already exist in the list
       postprocessor_type *pps = *postprocessor_it;
-      output_data.available.push_back(pps->PPName());
+      output_data.available.insert(pps->PPName());
 
       // Extract the list of outputs
       std::set<OutputName> pps_outputs = pps->getOutputs();
 
       // Check that the outputs lists are valid
-      OutputBase::_app.getOutputWarehouse().checkOutputs(pps_outputs);
+      T::_app.getOutputWarehouse().checkOutputs(pps_outputs);
 
       // Check that the output object allows postprocessor output,
       // account for "all" keyword (if it is present assume "all" was desired)
-      if ( pps_outputs.find(OutputBase::_name) != pps_outputs.end() || pps_outputs.find("all") != pps_outputs.end() )
+      if ( pps_outputs.find(T::_name) != pps_outputs.end() || pps_outputs.find("all") != pps_outputs.end() )
       {
-        if (!hasPostprocessorOutput())
+        if (!T::_advanced_output_on.contains("postprocessors") || (T::_advanced_output_on["postprocessors"].isValid() && T::_advanced_output_on["postprocessors"].contains("none")))
           mooseWarning("Postprocessor '" << pps->PPName()
-                       << "' has requested to be output by the '" << OutputBase::_name
+                       << "' has requested to be output by the '" << T::_name
                        << "' output, but postprocessor output is not support by this type of output object.");
       }
 
@@ -508,7 +393,19 @@ AdvancedOutput<OutputBase>::initPostprocessorOrVectorPostprocessorLists(OutputDa
     }
   }
 
-  return has_limited_pps;
+  // Produce the warning when 'outputs' is used, but postprocessor output is disabled
+  if (has_limited_pps && T::isParamValid(output_on_name))
+  {
+    const MultiMooseEnum & pp_on = T::template getParam<MultiMooseEnum>(output_on_name);
+    if (pp_on.contains("none"))
+    {
+      if (output_on_name == "output_postprocessors_on")
+        mooseWarning("A Postprocessor utilizes the 'outputs' parameter; however, postprocessor output is disabled for the '" << T::_name << "' output object.");
+      else if (output_on_name == "output_postprocessors_on")
+        mooseWarning("A VectorPostprocessor utilizes the 'outputs' parameter; however, vector postprocessor output is disabled for the '" << T::_name << "' output object.");
+
+    }
+  }
 }
 
 #endif /* ADVANCEDOUTPUT_H */

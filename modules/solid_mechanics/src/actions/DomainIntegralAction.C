@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "DomainIntegralAction.h"
 
 #include "Factory.h"
@@ -12,7 +18,7 @@ InputParameters validParams<DomainIntegralAction>()
 {
   InputParameters params = validParams<Action>();
   addCrackFrontDefinitionParams(params);
-  MultiMooseEnum integral_vec("JIntegral InteractionIntegralKI InteractionIntegralKII InteractionIntegralKIII");
+  MultiMooseEnum integral_vec("JIntegral InteractionIntegralKI InteractionIntegralKII InteractionIntegralKIII InteractionIntegralT");
   params.addRequiredParam<MultiMooseEnum>("integrals", integral_vec, "Domain integrals to calculate.  Choices are: " + integral_vec.getRawNames());
   params.addParam<std::vector<BoundaryName> >("boundary", "The list of boundary IDs from the mesh where this boundary condition applies");
   params.addParam<std::string>("order", "FIRST",  "Specifies the order of the FE shape function to use for q AuxVariables");
@@ -21,13 +27,14 @@ InputParameters validParams<DomainIntegralAction>()
   params.addRequiredParam<std::vector<Real> >("radius_outer", "Outer radius for volume integral domain");
   params.addParam<std::vector<VariableName> >("output_variable", "Variable values to be reported along the crack front");
   params.addParam<bool>("convert_J_to_K",false,"Convert J-integral to stress intensity factor K.");
-  params.addParam<bool>("symmetry_plane",false,"Adjust fracture integrals to account for a symmetry plane passing through the plane of the crack");
   params.addParam<Real>("poissons_ratio","Poisson's ratio");
   params.addParam<Real>("youngs_modulus","Young's modulus");
   params.addParam<std::vector<SubdomainName> >("block","The block ids where InteractionIntegralAuxFields is defined");
   params.addParam<VariableName>("disp_x", "", "The x displacement");
   params.addParam<VariableName>("disp_y", "", "The y displacement");
   params.addParam<VariableName>("disp_z", "", "The z displacement");
+  MooseEnum position_type("Angle Distance","Distance");
+  params.addParam<MooseEnum>("position_type", position_type, "The method used to calculate position along crack front.  Options are: "+position_type.getRawNames());
   return params;
 }
 
@@ -46,7 +53,9 @@ DomainIntegralAction::DomainIntegralAction(const std::string & name, InputParame
   _radius_inner(getParam<std::vector<Real> >("radius_inner")),
   _radius_outer(getParam<std::vector<Real> >("radius_outer")),
   _convert_J_to_K(false),
-  _symmetry_plane(getParam<bool>("symmetry_plane")),
+  _has_symmetry_plane(isParamValid("symmetry_plane")),
+  _symmetry_plane(_has_symmetry_plane ? getParam<unsigned int>("symmetry_plane") : std::numeric_limits<unsigned int>::max()),
+  _position_type(getParam<MooseEnum>("position_type")),
   _use_displaced_mesh(false)
 {
   if (isParamValid("crack_direction_vector"))
@@ -142,7 +151,7 @@ DomainIntegralAction::act()
     const std::string uo_type_name("CrackFrontDefinition");
 
     InputParameters params = _factory.getValidParams(uo_type_name);
-    params.set<MultiMooseEnum>("execute_on") = "initial";
+    params.set<MultiMooseEnum>("execute_on") = "initial nonlinear";
     params.set<MooseEnum>("crack_direction_method") = _direction_method_moose_enum;
     params.set<MooseEnum>("crack_end_direction_method") = _end_direction_method_moose_enum;
     if (_have_crack_direction_vector)
@@ -157,8 +166,18 @@ DomainIntegralAction::act()
       params.set<std::vector<BoundaryName> >("intersecting_boundary") = _intersecting_boundary_names;
     params.set<bool>("2d") = _treat_as_2d;
     params.set<unsigned int>("axis_2d") = _axis_2d;
+    if (_has_symmetry_plane)
+      params.set<unsigned int>("symmetry_plane") = _symmetry_plane;
     params.set<std::vector<BoundaryName> >("boundary") = _boundary_names;
     params.set<bool>("use_displaced_mesh") = _use_displaced_mesh;
+    if (_integrals.count(INTERACTION_INTEGRAL_T) != 0)
+    {
+      params.set<VariableName>("disp_x") = _disp_x;
+      params.set<VariableName>("disp_y") = _disp_y;
+      if (_disp_z !="")
+        params.set<VariableName>("disp_z") = _disp_z;
+      params.set<bool>("t_stress") = true;
+    }
 
     _problem->addUserObject(uo_type_name, uo_name, params);
   }
@@ -234,7 +253,7 @@ DomainIntegralAction::act()
         pp_base_name = "J";
       const std::string pp_type_name("JIntegral");
       InputParameters params = _factory.getValidParams(pp_type_name);
-      params.set<MultiMooseEnum>("execute_on") = "timestep";
+      params.set<MultiMooseEnum>("execute_on") = "timestep_end";
       params.set<UserObjectName>("crack_front_definition") = uo_name;
       params.set<bool>("convert_J_to_K") = _convert_J_to_K;
       if (_convert_J_to_K)
@@ -242,7 +261,8 @@ DomainIntegralAction::act()
         params.set<Real>("youngs_modulus") = _youngs_modulus;
         params.set<Real>("poissons_ratio") = _poissons_ratio;
       }
-      params.set<bool>("symmetry_plane") = _symmetry_plane;
+      if (_has_symmetry_plane)
+        params.set<unsigned int>("symmetry_plane") = _symmetry_plane;
       params.set<bool>("use_displaced_mesh") = _use_displaced_mesh;
       for (unsigned int ring_index=0; ring_index<_radius_inner.size(); ++ring_index)
       {
@@ -277,13 +297,13 @@ DomainIntegralAction::act()
     if (_integrals.count(INTERACTION_INTEGRAL_KI) != 0 || _integrals.count(INTERACTION_INTEGRAL_KII) != 0 || _integrals.count(INTERACTION_INTEGRAL_KIII) != 0)
     {
 
-      if (_symmetry_plane && (_integrals.count(INTERACTION_INTEGRAL_KII) != 0 || _integrals.count(INTERACTION_INTEGRAL_KIII) != 0))
+      if (_has_symmetry_plane && (_integrals.count(INTERACTION_INTEGRAL_KII) != 0 || _integrals.count(INTERACTION_INTEGRAL_KIII) != 0))
         mooseError("In DomainIntegral, symmetry_plane option cannot be used with mode-II or mode-III interaction integral");
 
       const std::string pp_base_name("II");
       const std::string pp_type_name("InteractionIntegral");
       InputParameters params = _factory.getValidParams(pp_type_name);
-      params.set<MultiMooseEnum>("execute_on") = "timestep";
+      params.set<MultiMooseEnum>("execute_on") = "timestep_end";
       params.set<UserObjectName>("crack_front_definition") = uo_name;
       params.set<bool>("use_displaced_mesh") = _use_displaced_mesh;
       params.set<Real>("poissons_ratio") = _poissons_ratio;
@@ -302,6 +322,9 @@ DomainIntegralAction::act()
         case J_INTEGRAL:
           continue;
 
+        case INTERACTION_INTEGRAL_T:
+          continue;
+
         case INTERACTION_INTEGRAL_KI:
           pp_base_name = "II_KI";
           aux_mode_name = "_I_";
@@ -317,7 +340,7 @@ DomainIntegralAction::act()
         case INTERACTION_INTEGRAL_KIII:
           pp_base_name = "II_KIII";
           aux_mode_name = "_III_";
-          params.set<Real>("K_factor") = 0.5 * _youngs_modulus / (2 * (1 + _poissons_ratio));
+          params.set<Real>("K_factor") = 0.5 * _youngs_modulus / (1 + _poissons_ratio);
           break;
         }
 
@@ -379,7 +402,7 @@ DomainIntegralAction::act()
       const std::string ov_base_name(_output_variables[i]);
       const std::string pp_type_name("CrackFrontData");
       InputParameters params = _factory.getValidParams(pp_type_name);
-      params.set<MultiMooseEnum>("execute_on") = "timestep";
+      params.set<MultiMooseEnum>("execute_on") = "timestep_end";
       params.set<UserObjectName>("crack_front_definition") = uo_name;
       if (_treat_as_2d)
       {
@@ -410,6 +433,8 @@ DomainIntegralAction::act()
         std::string pp_base_name;
         switch (*sit)
         {
+          case INTERACTION_INTEGRAL_T:
+            continue;
           case J_INTEGRAL:
             if (_convert_J_to_K)
               pp_base_name = "K";
@@ -426,9 +451,12 @@ DomainIntegralAction::act()
             pp_base_name = "II_KIII";
             break;
         }
-        const std::string vpp_type_name("VectorOfPostprocessors");
+        const std::string vpp_type_name("CrackDataSampler");
         InputParameters params = _factory.getValidParams(vpp_type_name);
-        params.set<MultiMooseEnum>("execute_on") = "timestep";
+        params.set<MultiMooseEnum>("execute_on") = "timestep_end";
+        params.set<UserObjectName>("crack_front_definition") = uo_name;
+        params.set<MooseEnum>("sort_by") = "id";
+        params.set<MooseEnum>("position_type") = _position_type;
         for (unsigned int ring_index=0; ring_index<_radius_inner.size(); ++ring_index)
         {
           std::vector<PostprocessorName> postprocessor_names;
@@ -449,7 +477,7 @@ DomainIntegralAction::act()
       {
         const std::string vpp_type_name("VectorOfPostprocessors");
         InputParameters params = _factory.getValidParams(vpp_type_name);
-        params.set<MultiMooseEnum>("execute_on") = "timestep";
+        params.set<MultiMooseEnum>("execute_on") = "timestep_end";
         std::ostringstream vpp_name_stream;
         vpp_name_stream<<_output_variables[i]<<"_crack";
         std::vector<PostprocessorName> postprocessor_names;

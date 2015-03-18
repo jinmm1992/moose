@@ -1,4 +1,6 @@
 [presentation]
+  style = 'inl'
+  code = 'dark'
   [./cover]
     type = CoverSet
     title = '**PresentationBuilder**<br><br> A tool for generating slides from MOOSE wiki content'
@@ -21,6 +23,7 @@
     contents = true
     contents_level = 2
     title = 'Slides extracted from the mooseframework.org wiki'
+    contents_title = 'Contents'
 
     [./Slides]
       [./demo-title]
@@ -33,7 +36,6 @@
       [./64]
         align = 'center'
         width = '500px'
-        download = False
       [../]
     [../]
   [../]

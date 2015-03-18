@@ -1,3 +1,9 @@
+/****************************************************************/
+/* MOOSE - Multiphysics Object Oriented Simulation Environment  */
+/*                                                              */
+/*          All contents are licensed under LGPL V2.1           */
+/*             See LICENSE for full restrictions                */
+/****************************************************************/
 #include "TensorMechanicsPlasticMohrCoulomb.h"
 #include <math.h> // for M_PI
 
@@ -416,4 +422,10 @@ TensorMechanicsPlasticMohrCoulomb::d2smooth(const RankTwoTensor & stress) const
     d2smoother2 += 2*std::pow(dp_dx, 2) + 2*p*d2p_dx2;
   }
   return d2smoother2;
+}
+
+std::string
+TensorMechanicsPlasticMohrCoulomb::modelName() const
+{
+  return "MohrCoulomb";
 }
