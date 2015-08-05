@@ -12,6 +12,10 @@ MOOSE_DIR          ?= $(shell dirname $(EXAMPLE_DIR))
 FRAMEWORK_DIR      ?= $(MOOSE_DIR)/framework
 ###############################################################################
 
+######################modules###############################
+#MISC	:= yes
+#include $(MOOSE_DIR)/modules/modules.mk
+
 TEST := test_ignore
 
 # framework
@@ -21,8 +25,12 @@ include $(FRAMEWORK_DIR)/moose.mk
 APPLICATION_NAME := ex18
 
 # dep apps
+#APPLICATION_DIR    := $(EXAMPLE_DIR)/ex10_aux
+#APPLICATION_NAME   := ex10
+#include            $(FRAMEWORK_DIR)/app.mk
 APPLICATION_DIR    := $(shell pwd)
 APPLICATION_NAME   := ex18
+
 BUILD_EXEC         := yes
 DEP_APPS           := $(shell $(FRAMEWORK_DIR)/scripts/find_dep_apps.py $(APPLICATION_NAME))
 include            $(FRAMEWORK_DIR)/app.mk

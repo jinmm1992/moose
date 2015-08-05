@@ -66,5 +66,6 @@
     sub_cycling = true
     steady_state_tol = 1e-5
     detect_steady_state = true
+    catch_up = false
   [../]
 []

@@ -19,6 +19,9 @@
 #include "ScalarDirichletBC.h"
 #include "ImplicitODEx.h"
 #include "ImplicitODEy.h"
+#include "CoupledDirectionalMeshHeightInterpolation.h"
+
+//#include "../../../ex10_aux/include/base/ExampleApp.h"
 
 template<>
 InputParameters validParams<ExampleApp>()
@@ -55,6 +58,7 @@ ExampleApp::registerObjects(Factory & factory)
   registerBoundaryCondition(ScalarDirichletBC);
   registerScalarKernel(ImplicitODEx);
   registerScalarKernel(ImplicitODEy);
+  registerAux(CoupledDirectionalMeshHeightInterpolation);
 }
 
 void

@@ -23,6 +23,7 @@ InputParameters validParams<ImplicitODEx>()
 {
   InputParameters params = validParams<ODEKernel>();
   params.addCoupledVar("y", "variable Y coupled into this kernel");
+//  params.addRequiredParam<PostprocessorName>("pp","the name of the postprocessor");
   return params;
 }
 
@@ -39,7 +40,7 @@ Real
 ImplicitODEx::computeQpResidual()
 {
   // the term of the ODE without the time derivative term
-  return -3. * _u[_i] - 2. * _y[_i];
+  return -3. * _u[_i] - 2. * _y[_i] ;
 }
 
 Real

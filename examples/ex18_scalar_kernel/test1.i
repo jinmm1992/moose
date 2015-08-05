@@ -1,3 +1,7 @@
+#[GlobalParams]
+#   use_displaced_mesh = true
+#[]
+
 [Mesh]
   type = GeneratedMesh
   dim = 2
@@ -11,6 +15,18 @@
 [Variables]
   [./u]
   [../]
+  # ODE variables
+  [./x]
+    family = SCALAR
+    order = FIRST
+    initial_condition = 1
+  [../]
+  [./y]
+    family = SCALAR
+    order = FIRST
+    initial_condition = 2
+  [../]
+
 []
 
 [AuxVariables]
@@ -25,11 +41,18 @@
 [Functions]
   [./stretch_func]
     type = ParsedFunction
-    value = t
+    value = a #t
+    vars = a
   [../]
 []
 
 [Kernels]
+  [./td]
+    type = TimeDerivative
+    variable = u
+    use_displaced_mesh = true
+  [../]
+
   [./diff]
     type = Diffusion
     variable = u
@@ -37,6 +60,29 @@
   [../]
 []
 
+[ScalarKernels]
+  [./td1]
+    type = ODETimeDerivative
+    variable = x
+  [../]
+  [./ode1]
+    type = ImplicitODEx
+    variable = x
+    y = y
+    pp = avg
+    execute_on = timestep_end
+  [../]
+
+  [./td2]
+    type = ODETimeDerivative
+    variable = y
+  [../]
+  [./ode2]
+    type = ImplicitODEy
+    variable = y
+    x = x
+  [../]
+[]
 [AuxKernels]
   [./interpolation]
     type = CoupledDirectionalMeshHeightInterpolation
@@ -67,6 +113,24 @@
     boundary = right
     value = 1
     use_displaced_mesh = true
+  [../]
+[]
+
+[Postprocessors]
+  [./avg]
+  type = AverageNodalVariableValue
+  variable = u
+  [../]
+  # to print the values of x, y into a file so we can plot it
+  [./x]
+    type = ScalarVariable
+    variable = x
+    execute_on = timestep_end
+  [../]
+  [./y]
+    type = ScalarVariable
+    variable = y
+    execute_on = timestep_end
   [../]
 []
 

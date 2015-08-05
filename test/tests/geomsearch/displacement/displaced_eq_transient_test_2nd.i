@@ -1,0 +1,127 @@
+[GlobalParams]
+  use_displaced_mesh = true
+[]
+[Mesh]
+  type = GeneratedMesh
+  dim = 2
+  xmin = -1
+  xmax = 1
+  ymin = -1
+  ymax = 1
+  nx = 5
+  ny = 5
+  elem_type = QUAD4
+
+  displacements = 'disp_x disp_y'
+[]
+
+[Functions]
+  [./right_u]
+    type = ParsedFunction
+    value = 0.1*t
+  [../]
+
+  [./fn_v]
+    type = ParsedFunction
+    value = (x+1)*y*0.1*t
+  [../]
+
+  [./growth]
+    type = ParsedFunction
+    value = 0.1*t*x
+  [../]
+[]
+
+[AuxVariables]
+  [./disp_x]
+  [../]
+  [./disp_y]
+  [../]
+[]
+[AuxKernels]
+  [./growfunc]
+    type = FunctionAux
+    variable = disp_y
+    function = growth
+  [../]
+[]
+
+[Variables]
+  [./u]
+    order = FIRST
+    family = LAGRANGE
+  [../]
+  [./v]
+    order = FIRST
+    family = LAGRANGE
+  [../]
+[]
+
+[Kernels]
+  [./td_u]
+    type = TimeDerivative
+    variable = u
+#    use_displaced_mesh = true
+  [../]
+  [./diff_u]
+    type = Diffusion
+    variable = u
+#    use_displaced_mesh = true
+  [../]
+
+  [./td_v]
+    type = TimeDerivative
+    variable = v
+  [../]
+  [./diff_v]
+    type = Diffusion
+    variable = v
+  [../]
+[]
+
+[BCs]
+  [./left_u]
+    type = DirichletBC
+    variable = u
+    boundary = 3
+    value = 0
+  [../]
+  [./right_u]
+    type = FunctionDirichletBC
+    variable = u
+    boundary = 1
+    function = right_u
+  [../]
+
+  [./left_v]
+    type = FunctionDirichletBC
+    variable = v
+    boundary = '0 2'
+    function = fn_v
+  [../]
+[]
+
+[Executioner]
+  type = Transient
+
+  dt = 0.1
+  start_time = 0
+  num_steps = 10
+
+
+  # Preconditioned JFNK (default)
+  solve_type = 'PJFNK'
+[]
+
+[Outputs]
+  output_initial = true
+  [./out_displaced]
+    type = Exodus
+    use_displaced = true
+  [../]
+  [./console]
+    type = Console
+    perf_log = true
+    output_on = 'initial linear nonlinear failed timestep_end'
+  [../]
+[]

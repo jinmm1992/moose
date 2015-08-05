@@ -80,6 +80,7 @@ protected:
    * Coupled scalar variable values
    */
   VariableValue & _y;
+//  const PostprocessorValue & _pp;
 };
 
 

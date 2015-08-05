@@ -3,6 +3,7 @@
   dim = 2
   nx = 20
   ny = 20
+
 []
 
 [Variables]
@@ -40,7 +41,7 @@
   type = Transient
   num_steps = 100
   dt = 0.1
-
+  l_tol = 1e-10
   # Preconditioned JFNK (default)
   solve_type = 'PJFNK'
 

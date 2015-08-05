@@ -64,3 +64,13 @@
     value = 1
   [../]
 []
+
+[Outputs]
+  file_base = multiapp_bison_test
+  exodus = true
+  [./console]
+    type = Console
+    perf_log = true
+    linear_residuals = true
+  [../]
+[]

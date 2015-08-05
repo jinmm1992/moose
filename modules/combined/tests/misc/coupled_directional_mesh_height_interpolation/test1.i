@@ -11,6 +11,18 @@
 [Variables]
   [./u]
   [../]
+  # ODE variables
+  [./x]
+    family = SCALAR
+    order = FIRST
+    initial_condition = 1
+  [../]
+  [./y]
+    family = SCALAR
+    order = FIRST
+    initial_condition = 2
+  [../]
+
 []
 
 [AuxVariables]
@@ -25,7 +37,9 @@
 [Functions]
   [./stretch_func]
     type = ParsedFunction
-    value = t
+    value = a #t
+    vars = a
+    vals = avg
   [../]
 []
 
@@ -35,7 +49,28 @@
     variable = u
     use_displaced_mesh = true
   [../]
+  [./ode1]
+    type = ImplicitODEx
+    variable = x
+    y = y
+  [../]
+
+  [./td2]
+    type = ODETimeDerivative
+    variable = y
+  [../]
+  [./ode2]
+    type = ImplicitODEy
+    variable = y
+    x = x
+  [../]
 []
+
+[ScalarKernels]
+  [./td1]
+    type = ODETimeDerivative
+    variable = x
+  [../]
 
 [AuxKernels]
   [./interpolation]
@@ -67,6 +102,24 @@
     boundary = right
     value = 1
     use_displaced_mesh = true
+  [../]
+[]
+
+[Postprocessors]
+  [./avg]
+  type = AverageNodalVariableValue
+  variable = u
+  [../]
+  # to print the values of x, y into a file so we can plot it
+  [./x]
+    type = ScalarVariable
+    variable = x
+    execute_on = timestep_end
+  [../]
+  [./y]
+    type = ScalarVariable
+    variable = y
+    execute_on = timestep_end
   [../]
 []
 
